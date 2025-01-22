@@ -91,7 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_status_insert_time ON status(insert_utc_ts);
 在需要监控的服务器上运行：
 
 ```bash
-curl -L https://github.com/heyuecock/zsan-server-worker/raw/refs/heads/main/zsan-client-install.sh -o zsan-client-install.sh
+curl -L https://github.com/heyuecock/zsan/raw/refs/heads/main/zsan-client-install.sh -o zsan-client-install.sh
 chmod +x zsan-client-install.sh
 ./zsan-client-install.sh
 ```
