@@ -12,21 +12,32 @@ on:
 
 jobs:
   build:
-    runs-on: debian-11  # 使用较老的 Ubuntu 版本
+    runs-on: ubuntu-20.04
+    container:
+      image: debian:11
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up GCC
+    - name: Set up build environment
       run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc make musl-tools
-    
-    - name: Build
+        apt-get update
+        apt-get install -y gcc make curl
+
+    - name: Build for Debian 11
       run: |
-        # 使用 musl-gcc 进行静态链接编译
-        musl-gcc -static -O2 zsan-client.c -o zsan_amd64
+        # 使用系统 GCC 进行编译，确保与 Debian 11 兼容
+        gcc -O2 \
+          -static-libgcc \
+          -D_FORTIFY_SOURCE=2 \
+          -fstack-protector-strong \
+          -Wformat -Werror=format-security \
+          zsan-client.c -o zsan_amd64
         strip zsan_amd64
+        
+        # 验证编译结果
+        ldd zsan_amd64 || true
+        file zsan_amd64
     
     - name: Test binary
       run: |
