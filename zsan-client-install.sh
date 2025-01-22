@@ -76,6 +76,13 @@ install_zsan() {
                 sudo yum install -y curl || error_exit "安装 curl 失败"
             fi
             ;;
+        arch)
+            if $IS_ROOT; then
+                pacman -S --noconfirm curl || error_exit "安装 curl 失败"
+            else
+                sudo pacman -S --noconfirm curl || error_exit "安装 curl 失败"
+            fi
+            ;;
         *)
             error_exit "不支持的发行版: $OS"
             ;;
@@ -95,6 +102,13 @@ install_zsan() {
     if [ -z "$REPORT_URL" ]; then
         error_exit "上报地址不能为空！"
     fi
+
+    # 校验上报地址
+    log "校验上报地址..."
+    if ! curl -s "$REPORT_URL" | grep -q "kunlun"; then
+        error_exit "上报地址校验失败：返回内容不包含 'kunlun'"
+    fi
+    log "上报地址校验通过！"
 
     # 创建必要的目录
     log "创建必要的目录..."
@@ -137,6 +151,7 @@ Environment=\"SERVER_NAME=$SERVER_NAME\"
 Environment=\"SERVER_LOCATION=$SERVER_LOCATION\"
 Restart=always
 User=$USER
+Environment=HOME=$HOME
 
 [Install]
 WantedBy=multi-user.target"
