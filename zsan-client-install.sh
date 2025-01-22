@@ -112,28 +112,48 @@ install_zsan() {
 
     # 创建必要的目录
     log "创建必要的目录..."
-    mkdir -p ~/.zsan || error_exit "创建配置目录失败"
-    mkdir -p ~/bin || error_exit "创建二进制目录失败"
+    if $IS_ROOT; then
+        mkdir -p /opt/zsan/bin || error_exit "创建二进制目录失败"
+        mkdir -p /etc/zsan || error_exit "创建配置目录失败"
+    else
+        sudo mkdir -p /opt/zsan/bin || error_exit "创建二进制目录失败"
+        sudo mkdir -p /etc/zsan || error_exit "创建配置目录失败"
+    fi
 
     # 拉取 zsan 二进制文件
     log "拉取 zsan 二进制文件..."
-    if ! curl -L https://github.com/heyuecock/zsan-server-worker/releases/download/v0.0.1/zsan_amd64 -o ~/bin/zsan_amd64; then
+    if ! curl -L https://github.com/heyuecock/zsan-server-worker/releases/download/v0.0.1/zsan_amd64 -o /tmp/zsan_amd64; then
         error_exit "下载 zsan 二进制文件失败"
     fi
-    chmod +x ~/bin/zsan_amd64 || error_exit "设置可执行权限失败"
+    
+    if $IS_ROOT; then
+        mv /tmp/zsan_amd64 /opt/zsan/bin/zsan_amd64 || error_exit "移动二进制文件失败"
+        chmod 755 /opt/zsan/bin/zsan_amd64 || error_exit "设置可执行权限失败"
+    else
+        sudo mv /tmp/zsan_amd64 /opt/zsan/bin/zsan_amd64 || error_exit "移动二进制文件失败"
+        sudo chmod 755 /opt/zsan/bin/zsan_amd64 || error_exit "设置可执行权限失败"
+    fi
 
     # 创建配置文件
     log "创建配置文件..."
-    CONFIG_FILE=~/.zsan/config
-    cat > "$CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
+    CONFIG_FILE=/etc/zsan/config
+    if $IS_ROOT; then
+        cat > "$CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
 SERVER_NAME="$SERVER_NAME"
 SERVER_LOCATION="$SERVER_LOCATION"
 REPORT_URL="$REPORT_URL"
 INTERVAL=$INTERVAL
 EOF
-
-    # 设置配置文件权限
-    chmod 600 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
+        chmod 644 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
+    else
+        sudo bash -c "cat > $CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
+SERVER_NAME="$SERVER_NAME"
+SERVER_LOCATION="$SERVER_LOCATION"
+REPORT_URL="$REPORT_URL"
+INTERVAL=$INTERVAL
+EOF
+        sudo chmod 644 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
+    fi
 
     # 配置 systemd 服务
     log "配置 systemd 服务..."
@@ -146,16 +166,30 @@ Description=zsan System Monitor
 After=network.target
 
 [Service]
-ExecStart=$HOME/bin/zsan_amd64 -s $INTERVAL -u $REPORT_URL
-Environment=\"SERVER_NAME=$SERVER_NAME\"
-Environment=\"SERVER_LOCATION=$SERVER_LOCATION\"
+Type=simple
+ExecStart=/opt/zsan/bin/zsan_amd64 -s $INTERVAL -u $REPORT_URL
+Environment=SERVER_NAME=$SERVER_NAME
+Environment=SERVER_LOCATION=$SERVER_LOCATION
+Environment=HOME=/root
+WorkingDirectory=/root
 Restart=always
-User=$USER
-Environment=HOME=$HOME
+RestartSec=60
+StandardOutput=append:/var/log/zsan.log
+StandardError=append:/var/log/zsan.error.log
 
 [Install]
 WantedBy=multi-user.target"
 
+    # 创建日志文件并设置权限
+    if $IS_ROOT; then
+        touch /var/log/zsan.log /var/log/zsan.error.log
+        chmod 644 /var/log/zsan.log /var/log/zsan.error.log
+    else
+        sudo touch /var/log/zsan.log /var/log/zsan.error.log
+        sudo chmod 644 /var/log/zsan.log /var/log/zsan.error.log
+    fi
+
+    # 创建服务文件
     if $IS_ROOT; then
         echo "$SERVICE_CONTENT" > "$SERVICE_PATH" || error_exit "创建服务文件失败"
     else
@@ -223,8 +257,8 @@ uninstall_zsan() {
 
     # 删除二进制文件和配置
     log "删除 zsan 文件..."
-    rm -f "$HOME/bin/zsan_amd64"
-    rm -rf "$HOME/.zsan"
+    rm -f /opt/zsan/bin/zsan_amd64
+    rm -rf /etc/zsan
 
     log "zsan 已成功卸载！"
 }
