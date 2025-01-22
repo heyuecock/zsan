@@ -264,7 +264,7 @@ const routeHandlers = {
     async handleGetIndex(request, env) {
         try {
             const response = await fetch(
-                'https://raw.githubusercontent.com/heyuecock/zsan-server-worker/refs/heads/main/index.html'
+                'https://raw.githubusercontent.com/heyuecock/zsan/refs/heads/main/index.html'
             );
             
             if (!response.ok) {
