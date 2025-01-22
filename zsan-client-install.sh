@@ -118,7 +118,7 @@ install_zsan() {
 
     # 拉取 zsan 二进制文件
     log "拉取 zsan 二进制文件..."
-    if ! curl -L https://github.com/heyuecock/zsan-server-worker/releases/download/v0.0.1/zsan_amd64 -o ~/bin/zsan_amd64; then
+    if ! curl -L https://github.com/heyuecock/zsan/releases/download/v0.0.1/zsan_amd64 -o ~/bin/zsan_amd64; then
         error_exit "下载 zsan 二进制文件失败"
     fi
     chmod +x ~/bin/zsan_amd64 || error_exit "设置可执行权限失败"
