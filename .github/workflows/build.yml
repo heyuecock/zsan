@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04  # 使用较老的 Ubuntu 版本
+    runs-on: debian-11  # 使用较老的 Ubuntu 版本
     
     steps:
     - uses: actions/checkout@v4
