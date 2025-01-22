@@ -42,8 +42,8 @@ pre_install_check() {
     check_command systemctl
     
     # 检查目录权限
-    if [ ! -w /etc/systemd/system ]; then
-        error_exit "没有 systemd 服务目录的写入权限"
+    if [ ! -w /etc/systemd/system ] && ! sudo -n true 2>/dev/null; then
+        error_exit "没有 systemd 服务目录的写入权限，且无法使用 sudo"
     fi
     
     # 检查内存
@@ -76,13 +76,6 @@ install_zsan() {
                 sudo yum install -y curl || error_exit "安装 curl 失败"
             fi
             ;;
-        arch)
-            if $IS_ROOT; then
-                pacman -S --noconfirm curl || error_exit "安装 curl 失败"
-            else
-                sudo pacman -S --noconfirm curl || error_exit "安装 curl 失败"
-            fi
-            ;;
         *)
             error_exit "不支持的发行版: $OS"
             ;;
@@ -102,14 +95,6 @@ install_zsan() {
     if [ -z "$REPORT_URL" ]; then
         error_exit "上报地址不能为空！"
     fi
-
-    # 校验上报地址
-    log "校验上报地址..."
-    RESPONSE=$(curl -s "$REPORT_URL" || error_exit "无法连接到上报地址")
-    if [[ $RESPONSE != *"kunlun"* ]]; then
-        error_exit "上报地址校验失败：返回内容不包含 'kunlun'"
-    fi
-    log "上报地址校验通过！"
 
     # 创建必要的目录
     log "创建必要的目录..."
@@ -152,7 +137,6 @@ Environment=\"SERVER_NAME=$SERVER_NAME\"
 Environment=\"SERVER_LOCATION=$SERVER_LOCATION\"
 Restart=always
 User=$USER
-Environment=HOME=$HOME
 
 [Install]
 WantedBy=multi-user.target"
@@ -183,14 +167,13 @@ WantedBy=multi-user.target"
 
     log "zsan 已成功安装并启动！"
     log "使用以下命令查看状态："
-    log "sudo systemctl status $SERVICE_NAME"
+    log "systemctl status $SERVICE_NAME"
 }
 
 # 卸载 zsan
 uninstall_zsan() {
     log "开始卸载 zsan..."
     SERVICE_NAME="zsan"
-    SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME.service"
 
     # 停止并禁用服务
     if systemctl is-active --quiet $SERVICE_NAME; then
@@ -212,13 +195,13 @@ uninstall_zsan() {
     fi
 
     # 删除服务文件
-    if [ -f "$SERVICE_PATH" ]; then
+    if [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
         log "删除 systemd 服务文件..."
         if $IS_ROOT; then
-            rm -f "$SERVICE_PATH" || error_exit "删除服务文件失败"
+            rm -f "/etc/systemd/system/$SERVICE_NAME.service" || error_exit "删除服务文件失败"
             systemctl daemon-reload
         else
-            sudo rm -f "$SERVICE_PATH" || error_exit "删除服务文件失败"
+            sudo rm -f "/etc/systemd/system/$SERVICE_NAME.service" || error_exit "删除服务文件失败"
             sudo systemctl daemon-reload
         fi
     fi
