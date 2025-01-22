@@ -400,48 +400,14 @@ void collect_metrics(SystemInfo *info) {
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         info->uptime = si.uptime;
-        info->load_1min = si.loads[0] / 65536.0;
-        info->load_5min = si.loads[1] / 65536.0;
-        info->load_15min = si.loads[2] / 65536.0;
     }
     
     get_total_traffic(&info->net_tx, &info->net_rx);
     get_disk_usage(&info->disks_total_kb, &info->disks_avail_kb);
     info->cpu_num_cores = sysconf(_SC_NPROCESSORS_ONLN);
     
-    FILE *fp = fopen("/proc/meminfo", "r");
-    if (fp) {
-        char line[256];
-        unsigned long long mem_total = 0, mem_free = 0, mem_available = 0, mem_buffers = 0, mem_cached = 0;
-        while (fgets(line, sizeof(line), fp)) {
-            if (sscanf(line, "MemTotal: %llu kB", &mem_total) == 1) continue;
-            if (sscanf(line, "MemFree: %llu kB", &mem_free) == 1) continue;
-            if (sscanf(line, "MemAvailable: %llu kB", &mem_available) == 1) continue;
-            if (sscanf(line, "Buffers: %llu kB", &mem_buffers) == 1) continue;
-            if (sscanf(line, "Cached: %llu kB", &mem_cached) == 1) continue;
-        }
-        fclose(fp);
-        
-        info->mem_total = mem_total / 1024.0;  // 转换为 MB
-        info->mem_free = mem_free / 1024.0;
-        info->mem_used = (mem_total - mem_available) / 1024.0;
-    }
-    
-    get_swap_info(&info->swap_total, &info->swap_free);
-    
-    info->process_count = get_process_count();
-    info->connection_count = get_connection_count();
-    
-    get_system_info(info->system, sizeof(info->system));
-    
-    // 获取machine-id
-    int machine_id_status = get_machine_id(info->machine_id, sizeof(info->machine_id));
-    if (machine_id_status != 0) {
-        fprintf(stderr, "Warning: Using randomly generated machine-id\n");
-    }
-
     // 计算 CPU 使用率
-    fp = fopen("/proc/stat", "r");
+    FILE *fp = fopen("/proc/stat", "r");
     if (fp) {
         char line[256];
         if (fgets(line, sizeof(line), fp)) {
@@ -467,6 +433,34 @@ void collect_metrics(SystemInfo *info) {
             prev_idle = idle_total;
         }
         fclose(fp);
+    }
+    
+    // 读取内存信息
+    fp = fopen("/proc/meminfo", "r");
+    if (fp) {
+        char line[256];
+        unsigned long long mem_total = 0, mem_free = 0, mem_available = 0;
+        while (fgets(line, sizeof(line), fp)) {
+            if (sscanf(line, "MemTotal: %llu kB", &mem_total) == 1) continue;
+            if (sscanf(line, "MemFree: %llu kB", &mem_free) == 1) continue;
+            if (sscanf(line, "MemAvailable: %llu kB", &mem_available) == 1) continue;
+        }
+        fclose(fp);
+        
+        info->mem_total = mem_total / 1024.0;  // 转换为 MB
+        info->mem_free = mem_free / 1024.0;
+        info->mem_used = (mem_total - mem_available) / 1024.0;
+    }
+    
+    get_swap_info(&info->swap_total, &info->swap_free);
+    info->process_count = get_process_count();
+    info->connection_count = get_connection_count();
+    get_system_info(info->system, sizeof(info->system));
+    
+    // 获取machine-id
+    int machine_id_status = get_machine_id(info->machine_id, sizeof(info->machine_id));
+    if (machine_id_status != 0) {
+        fprintf(stderr, "Warning: Using randomly generated machine-id\n");
     }
 }
 
