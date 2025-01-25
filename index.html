@@ -344,8 +344,8 @@
                                     className: 'space-y-2 text-sm'
                                 }, [
                                     React.createElement('p', null, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
-                                    React.createElement('p', null, `交换: ${formatBytes(server.swap_free * 1024 * 1024)} / ${formatBytes(server.swap_total * 1024 * 1024)}`),
-                                    React.createElement('p', null, `硬盘: ${formatBytes(server.disks_avail_kb * 1024)} / ${formatBytes(server.disks_total_kb * 1024)}`),
+                                    React.createElement('p', null, `交换: ${formatBytes((server.swap_total - server.swap_free) * 1024 * 1024)} / ${formatBytes(server.swap_total * 1024 * 1024)}`),
+                                    React.createElement('p', null, `硬盘: ${formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024)} / ${formatBytes(server.disks_total_kb * 1024)}`),
                                     React.createElement('p', null, `上传: ${formatBytes(server.net_tx)}/s`),
                                     React.createElement('p', null, `下载: ${formatBytes(server.net_rx)}/s`)
                                 ])
