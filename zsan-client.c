@@ -213,7 +213,7 @@ int get_machine_id(char *buffer, size_t buffer_size) {
     return 1; // 表示使用了随机生成的ID
 }
 
-// 获取总的出流量和入流量
+// 修改 get_total_traffic 函数
 void get_total_traffic(unsigned long *net_tx, unsigned long *net_rx) {
     FILE *fp;
     char line[256];
@@ -226,18 +226,38 @@ void get_total_traffic(unsigned long *net_tx, unsigned long *net_rx) {
     }
     fgets(line, sizeof(line), fp); // 跳过表头
     fgets(line, sizeof(line), fp);
+    
     while (fgets(line, sizeof(line), fp)) {
-        char iface[32];
-        unsigned long rx, tx;
-        if (sscanf(line, "%31[^:]: %lu %*lu %*lu %*lu %*lu %*lu %*lu %*lu %lu",
-                   iface, &rx, &tx) == 3) {
+        char iface[32] = {0};
+        unsigned long rx = 0, tx = 0;
+        char *colon = strchr(line, ':');
+        if (colon) {
+            // 分别处理接口名和数据
+            size_t name_len = colon - line;
+            if (name_len > sizeof(iface) - 1) {
+                name_len = sizeof(iface) - 1;
+            }
+            strncpy(iface, line, name_len);
+            iface[name_len] = '\0';
+            
+            // 去除接口名称前后的空白字符
+            char *start = iface;
             char *end = iface + strlen(iface) - 1;
-            while (end >= iface && (*end == ' ' || *end == '\t')) *end-- = '\0';
-            if (strncmp(iface, "lo", 2) == 0 || strncmp(iface, "br", 2) == 0 ||
-                strncmp(iface, "docker", 6) == 0 || strncmp(iface, "veth", 4) == 0 ||
-                strncmp(iface, "virbr", 5) == 0) continue;
-            *net_rx += rx;
-            *net_tx += tx;
+            while (*start == ' ' || *start == '\t') start++;
+            while (end > start && (*end == ' ' || *end == '\t')) *end-- = '\0';
+            
+            // 解析流量数据
+            if (sscanf(colon + 1, " %lu %*u %*u %*u %*u %*u %*u %*u %lu",
+                      &rx, &tx) == 2) {
+                if (strncmp(start, "lo", 2) != 0 && 
+                    strncmp(start, "br", 2) != 0 &&
+                    strncmp(start, "docker", 6) != 0 && 
+                    strncmp(start, "veth", 4) != 0 &&
+                    strncmp(start, "virbr", 5) != 0) {
+                    *net_rx += rx;
+                    *net_tx += tx;
+                }
+            }
         }
     }
     fclose(fp);
@@ -558,6 +578,17 @@ void log_message(const char *level, const char *format, ...) {
     va_end(args);
 }
 
+// 添加安全的字符串复制函数
+static void safe_strncpy(char *dest, const char *src, size_t size) {
+    if (size > 0) {
+        size_t i;
+        for (i = 0; i < size - 1 && src[i] != '\0'; i++) {
+            dest[i] = src[i];
+        }
+        dest[i] = '\0';
+    }
+}
+
 // main 函数和其他代码保持不变
 int main(int argc, char *argv[]) {
     int interval = 10;
@@ -577,11 +608,10 @@ int main(int argc, char *argv[]) {
     
     // 确保环境变量被正确读取
     if (env_name) {
-        strncpy(g_server_name, env_name, sizeof(g_server_name) - 1);
+        safe_strncpy(g_server_name, env_name, sizeof(g_server_name));
         printf("Server name from env: %s\n", g_server_name);
     } else {
         printf("SERVER_NAME environment variable not found\n");
-        // 尝试从配置文件读取
         FILE *fp = fopen("/root/.kunlun/config", "r");
         if (fp) {
             char line[256];
@@ -589,9 +619,10 @@ int main(int argc, char *argv[]) {
                 if (strncmp(line, "SERVER_NAME=", 12) == 0) {
                     char *value = line + 12;
                     if (value[0] == '"') value++;
-                    value[strlen(value)-1] = '\0';  // 移除换行符
-                    if (value[strlen(value)-1] == '"') value[strlen(value)-1] = '\0';
-                    strncpy(g_server_name, value, sizeof(g_server_name) - 1);
+                    size_t len = strlen(value);
+                    if (len > 0 && value[len-1] == '\n') value[len-1] = '\0';
+                    if (len > 1 && value[len-2] == '"') value[len-2] = '\0';
+                    safe_strncpy(g_server_name, value, sizeof(g_server_name));
                     printf("Server name from config: %s\n", g_server_name);
                     break;
                 }
@@ -601,11 +632,10 @@ int main(int argc, char *argv[]) {
     }
     
     if (env_location) {
-        strncpy(g_server_location, env_location, sizeof(g_server_location) - 1);
+        safe_strncpy(g_server_location, env_location, sizeof(g_server_location));
         printf("Server location from env: %s\n", g_server_location);
     } else {
         printf("SERVER_LOCATION environment variable not found\n");
-        // 尝试从配置文件读取
         FILE *fp = fopen("/root/.kunlun/config", "r");
         if (fp) {
             char line[256];
@@ -613,9 +643,10 @@ int main(int argc, char *argv[]) {
                 if (strncmp(line, "SERVER_LOCATION=", 15) == 0) {
                     char *value = line + 15;
                     if (value[0] == '"') value++;
-                    value[strlen(value)-1] = '\0';  // 移除换行符
-                    if (value[strlen(value)-1] == '"') value[strlen(value)-1] = '\0';
-                    strncpy(g_server_location, value, sizeof(g_server_location) - 1);
+                    size_t len = strlen(value);
+                    if (len > 0 && value[len-1] == '\n') value[len-1] = '\0';
+                    if (len > 1 && value[len-2] == '"') value[len-2] = '\0';
+                    safe_strncpy(g_server_location, value, sizeof(g_server_location));
                     printf("Server location from config: %s\n", g_server_location);
                     break;
                 }
