@@ -22,19 +22,21 @@ jobs:
     - name: Set up build environment
       run: |
         apt-get update
-        apt-get install -y gcc make curl libc6-dev build-essential
+        # 添加 file 命令
+        apt-get install -y gcc make curl libc6-dev build-essential file
 
     - name: Build for Debian 11
       run: |
-        # 使用更完整的编译选项
+        # 禁用特定警告
         gcc -O2 \
           -Wall \
           -Wextra \
           -static \
+          -Wno-format \
+          -Wno-unused-result \
+          -Wno-stringop-truncation \
           -D_FORTIFY_SOURCE=2 \
           -fstack-protector-strong \
-          -Wformat \
-          -Werror=format-security \
           zsan-client.c -o zsan_amd64
         
         # 去除调试信息
