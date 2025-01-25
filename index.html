@@ -106,23 +106,6 @@
             background-color: #7f1d1d;
             color: #fecaca;
         }
-        
-        /* 添加刷新提示动画 */
-        .refresh-indicator {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            padding: 0.5rem 1rem;
-            background-color: rgba(0,0,0,0.8);
-            color: white;
-            border-radius: 0.375rem;
-            transform: translateY(-100%);
-            transition: transform 0.3s ease;
-        }
-        
-        .refresh-indicator.show {
-            transform: translateY(0);
-        }
     </style>
 </head>
 <body class="min-h-screen bg-gray-50 dark:bg-[#0f172a] dark:text-white">
@@ -168,13 +151,6 @@
             }, React.createElement('i', {
                 className: `fas fa-${isDark ? 'sun' : 'moon'}`
             }));
-        });
-
-        // 刷新提示组件
-        const RefreshIndicator = React.memo(({ show }) => {
-            return React.createElement('div', {
-                className: `refresh-indicator ${show ? 'show' : ''}`
-            }, '数据已更新');
         });
 
         // 格式化工具函数
@@ -386,7 +362,6 @@
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
             const [expandedServers, setExpandedServers] = useState(new Set());
-            const [showRefresh, setShowRefresh] = useState(false);
 
             useEffect(() => {
                 const fetchData = async () => {
@@ -400,11 +375,6 @@
                         
                         if (data.success && Array.isArray(data.data)) {
                             setServers(prev => {
-                                const hasChanges = JSON.stringify(prev) !== JSON.stringify(data.data);
-                                if (hasChanges && prev.length > 0) {
-                                    setShowRefresh(true);
-                                    setTimeout(() => setShowRefresh(false), 3000);
-                                }
                                 return data.data;
                             });
                             setError(null);
@@ -480,10 +450,7 @@
                     ),
 
                     // 主题切换按钮
-                    React.createElement(ThemeToggle),
-
-                    // 刷新提示
-                    React.createElement(RefreshIndicator, { show: showRefresh })
+                    React.createElement(ThemeToggle)
                 ])
             ]);
         }
