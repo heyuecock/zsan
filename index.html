@@ -163,6 +163,16 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         };
 
+        // 添加网络速率格式化函数
+        const formatBitRate = (bytesPerSec, decimals = 2) => {
+            if (bytesPerSec === 0) return '0 B/s';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
+            const i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
+            return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        };
+
         const formatUptime = (seconds) => {
             const days = Math.floor(seconds / 86400);
             const hours = Math.floor((seconds % 86400) / 3600);
@@ -346,8 +356,8 @@
                                     React.createElement('p', null, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
                                     React.createElement('p', null, `交换: ${formatBytes((server.swap_total - server.swap_free) * 1024 * 1024)} / ${formatBytes(server.swap_total * 1024 * 1024)}`),
                                     React.createElement('p', null, `硬盘: ${formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024)} / ${formatBytes(server.disks_total_kb * 1024)}`),
-                                    React.createElement('p', null, `上传: ${formatBytes(server.net_tx)}/s`),
-                                    React.createElement('p', null, `下载: ${formatBytes(server.net_rx)}/s`)
+                                    React.createElement('p', null, `上传: ${formatBitRate(server.net_tx)}`),
+                                    React.createElement('p', null, `下载: ${formatBitRate(server.net_rx)}`)
                                 ])
                             ])
                         ])
