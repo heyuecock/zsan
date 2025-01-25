@@ -396,7 +396,9 @@
                             throw new Error('服务器响应错误');
                         }
                         const data = await response.json();
-                        if (data.success) {
+                        console.log('Fetched data:', data); // 添加调试日志
+                        
+                        if (data.success && Array.isArray(data.data)) {
                             setServers(prev => {
                                 const hasChanges = JSON.stringify(prev) !== JSON.stringify(data.data);
                                 if (hasChanges && prev.length > 0) {
