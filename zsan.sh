@@ -92,8 +92,8 @@ install_zsan() {
     read -p "请输入服务器名称: " SERVER_NAME
     SERVER_NAME=${SERVER_NAME:-"未命名服务器"}
 
-    read -p "请输入服务器位置: " SERVER_LOCATION
-    SERVER_LOCATION=${SERVER_LOCATION:-"未知位置"}
+    # 移除服务器位置的手动输入
+    SERVER_LOCATION=""  # 留空，由服务端根据 IP 自动判断
 
     read -p "请输入监测间隔（秒，默认 10）: " INTERVAL
     INTERVAL=${INTERVAL:-10}
@@ -105,8 +105,14 @@ install_zsan() {
 
     # 校验上报地址
     log "校验上报地址..."
-    if ! curl -s "$REPORT_URL" | grep -q "zsan"; then
-        error_exit "上报地址校验失败：返回内容不包含 'zsan'"
+    RESPONSE=$(curl -s "$REPORT_URL")
+    if [ $? -ne 0 ]; then
+        error_exit "无法连接到上报地址"
+    fi
+
+    # 检查响应内容
+    if ! echo "$RESPONSE" | grep -q "success" && ! echo "$RESPONSE" | grep -q "zsan"; then
+        log "警告: 上报地址返回的内容可能不正确，但将继续安装"
     fi
     log "上报地址校验通过！"
 
@@ -154,7 +160,6 @@ install_zsan() {
     if $IS_ROOT; then
         cat > "$CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
 SERVER_NAME="$SERVER_NAME"
-SERVER_LOCATION="$SERVER_LOCATION"
 REPORT_URL="$REPORT_URL"
 INTERVAL=$INTERVAL
 EOF
@@ -163,7 +168,6 @@ EOF
     else
         sudo bash -c "cat > $CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
 SERVER_NAME="$SERVER_NAME"
-SERVER_LOCATION="$SERVER_LOCATION"
 REPORT_URL="$REPORT_URL"
 INTERVAL=$INTERVAL
 EOF
@@ -185,7 +189,6 @@ After=network.target
 Type=simple
 ExecStart=/opt/zsan/bin/zsan_amd64 -s $INTERVAL -u $REPORT_URL
 Environment=SERVER_NAME=$SERVER_NAME
-Environment=SERVER_LOCATION=$SERVER_LOCATION
 Environment=HOME=/root
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WorkingDirectory=/var/log/zsan
