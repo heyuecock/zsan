@@ -212,7 +212,7 @@
             ]);
         });
 
-        // 添加新的状态栏组件
+        // 修改 StatusBar 组件
         const StatusBar = React.memo(({ server }) => {
             return React.createElement('div', {
                 className: 'grid grid-cols-7 gap-4 p-3 text-sm border-b dark:border-gray-700'
@@ -222,8 +222,10 @@
                     React.createElement('span', null, server.system)
                 ]),
                 React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '在线: '),
-                    React.createElement('span', null, formatUptime(server.uptime))
+                    React.createElement('span', { className: 'text-gray-500' }, '负载: '),
+                    React.createElement('span', null, 
+                        `${server.load_1min.toFixed(2)} / ${server.load_5min.toFixed(2)} / ${server.load_15min.toFixed(2)}`
+                    )
                 ]),
                 React.createElement('div', null, [
                     React.createElement('span', { className: 'text-gray-500' }, 'CPU: '),
