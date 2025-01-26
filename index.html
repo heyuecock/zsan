@@ -250,6 +250,9 @@
 
         // 修改服务器行组件，添加更多信息
         const ServerRow = React.memo(({ server, isExpanded, onToggle }) => {
+            console.log('Rendering server:', server);
+            console.log('Country code:', server.country_code);
+            
             const isOffline = Math.floor(Date.now() / 1000) - server.insert_utc_ts > 60;
             const memoryUsage = (server.mem_used / server.mem_total) * 100;
             const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb) * 100;
@@ -397,12 +400,14 @@
                             throw new Error('服务器响应错误');
                         }
                         const data = await response.json();
-                        console.log('Fetched data:', data); // 添加调试日志
+                        console.log('API Response:', data);
                         
                         if (data.success && Array.isArray(data.data)) {
-                            setServers(prev => {
-                                return data.data;
+                            const processedData = data.data.map(server => {
+                                console.log('Server country_code:', server.country_code);
+                                return server;
                             });
+                            setServers(processedData);
                             setError(null);
                         } else {
                             throw new Error(data.error || '获取数据失败');
