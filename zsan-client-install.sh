@@ -115,9 +115,23 @@ install_zsan() {
     if $IS_ROOT; then
         mkdir -p /opt/zsan/bin || error_exit "创建二进制目录失败"
         mkdir -p /etc/zsan || error_exit "创建配置目录失败"
+        mkdir -p /var/log/zsan || error_exit "创建日志目录失败"
+        
+        # 创建日志文件并设置正确的权限
+        touch /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "创建日志文件失败"
+        chmod 644 /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "设置日志文件权限失败"
+        chmod 755 /var/log/zsan || error_exit "设置日志目录权限失败"
+        chown -R root:root /var/log/zsan || error_exit "设置日志目录所有者失败"
     else
         sudo mkdir -p /opt/zsan/bin || error_exit "创建二进制目录失败"
         sudo mkdir -p /etc/zsan || error_exit "创建配置目录失败"
+        sudo mkdir -p /var/log/zsan || error_exit "创建日志目录失败"
+        
+        # 创建日志文件并设置正确的权限
+        sudo touch /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "创建日志文件失败"
+        sudo chmod 644 /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "设置日志文件权限失败"
+        sudo chmod 755 /var/log/zsan || error_exit "设置日志目录权限失败"
+        sudo chown -R root:root /var/log/zsan || error_exit "设置日志目录所有者失败"
     fi
 
     # 拉取 zsan 二进制文件
@@ -145,6 +159,7 @@ REPORT_URL="$REPORT_URL"
 INTERVAL=$INTERVAL
 EOF
         chmod 644 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
+        chown root:root "$CONFIG_FILE" || error_exit "设置配置文件所有者失败"
     else
         sudo bash -c "cat > $CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
 SERVER_NAME="$SERVER_NAME"
@@ -153,6 +168,7 @@ REPORT_URL="$REPORT_URL"
 INTERVAL=$INTERVAL
 EOF
         sudo chmod 644 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
+        sudo chown root:root "$CONFIG_FILE" || error_exit "设置配置文件所有者失败"
     fi
 
     # 配置 systemd 服务
@@ -171,23 +187,26 @@ ExecStart=/opt/zsan/bin/zsan_amd64 -s $INTERVAL -u $REPORT_URL
 Environment=SERVER_NAME=$SERVER_NAME
 Environment=SERVER_LOCATION=$SERVER_LOCATION
 Environment=HOME=/root
-WorkingDirectory=/root
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WorkingDirectory=/var/log/zsan
 Restart=always
-RestartSec=60
-StandardOutput=append:/var/log/zsan.log
-StandardError=append:/var/log/zsan.error.log
+RestartSec=10
+
+# 日志配置
+StandardOutput=append:/var/log/zsan/zsan.log
+StandardError=append:/var/log/zsan/zsan.error.log
+
+# 进程权限
+User=root
+Group=root
+
+# 调试选项
+KillMode=process
+TimeoutStopSec=5
+SyslogIdentifier=zsan
 
 [Install]
 WantedBy=multi-user.target"
-
-    # 创建日志文件并设置权限
-    if $IS_ROOT; then
-        touch /var/log/zsan.log /var/log/zsan.error.log
-        chmod 644 /var/log/zsan.log /var/log/zsan.error.log
-    else
-        sudo touch /var/log/zsan.log /var/log/zsan.error.log
-        sudo chmod 644 /var/log/zsan.log /var/log/zsan.error.log
-    fi
 
     # 创建服务文件
     if $IS_ROOT; then
@@ -202,6 +221,12 @@ WantedBy=multi-user.target"
         systemctl daemon-reload || error_exit "重载 systemd 配置失败"
     else
         sudo systemctl daemon-reload || error_exit "重载 systemd 配置失败"
+    fi
+
+    # 在服务启动前添加权限检查
+    log "检查日志文件权限..."
+    if [ ! -w "/var/log/zsan/zsan.log" ] || [ ! -w "/var/log/zsan/zsan.error.log" ]; then
+        error_exit "日志文件权限不正确"
     fi
 
     # 启动并启用服务
