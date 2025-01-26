@@ -50,6 +50,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
     
+    <!-- 添加 flag-icons CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.6.6/css/flag-icons.min.css"/>
+    
     <style>
         .server-row {
             transition: all 0.2s ease;
@@ -105,6 +108,11 @@
         .dark .error-message {
             background-color: #7f1d1d;
             color: #fecaca;
+        }
+        
+        .flag-icon {
+            margin-right: 0.5rem;
+            border-radius: 2px;
         }
     </style>
 </head>
@@ -251,19 +259,23 @@
                     className: 'grid grid-cols-12 gap-4 p-4 cursor-pointer',
                     onClick: () => onToggle()
                 }, [
-                    // 状态和名称
+                    // 状态、国旗和名称
                     React.createElement('div', {
                         className: 'col-span-2 flex items-center gap-2'
                     }, [
                         React.createElement('span', {
                             className: `w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'}`
                         }),
+                        // 添加国旗图标
+                        React.createElement('span', {
+                            className: `fi fi-${server.country_code?.toLowerCase() || 'xx'} flag-icon`
+                        }),
                         React.createElement('span', {
                             className: 'font-medium'
                         }, server.name || '未命名'),
                         React.createElement('span', {
                             className: 'text-xs text-gray-500'
-                        }, server.location || '未知')
+                        }, `${server.location || '未知'} (${server.ip_address || 'unknown'})`)
                     ]),
 
                     // 系统负载
