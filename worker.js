@@ -17,6 +17,15 @@ const DATA_RETENTION = {
     MAX_RECORDS_PER_CLIENT: 10  // 每个客户端保留的最大记录数
 };
 
+// 添加 GitHub index.html 链接常量
+const INDEX_HTML_URL = 'https://raw.githubusercontent.com/heyuecock/zsan/refs/heads/main/index.html';
+
+// 添加缓存对象
+let indexHtmlCache = {
+    content: null,
+    timestamp: 0
+};
+
 // 工具函数
 const utils = {
     validateMetrics: (data) => {
@@ -125,10 +134,34 @@ class RateLimiter {
 
 const rateLimiter = new RateLimiter();
 
+// 添加地理位置查询函数
+async function getLocationInfo(ip) {
+    try {
+        // 使用 Cloudflare 的请求头获取地理位置信息
+        return {
+            country: request.cf.country || 'Unknown',
+            city: request.cf.city || 'Unknown',
+            continent: request.cf.continent || 'Unknown',
+            latitude: request.cf.latitude || 0,
+            longitude: request.cf.longitude || 0,
+            country_code: request.cf.country_code || 'unknown'
+        };
+    } catch (error) {
+        console.error('Error getting location info:', error);
+        return null;
+    }
+}
+
 // 路由处理函数
 const routeHandlers = {
     async handlePostStatus(request, env) {
         try {
+            // 检查 env.DB 是否存在
+            if (!env.DB) {
+                console.error('Database binding not found');
+                return utils.handleError(new Error('数据库未配置'), 500);
+            }
+
             // 速率限制检查
             if (!await rateLimiter.checkLimit(request)) {
                 return utils.handleError(new Error(ERROR_MESSAGES.RATE_LIMIT), 429);
@@ -146,6 +179,10 @@ const routeHandlers = {
             const name = utils.sanitizeString(formData.get('name')) || '未命名';
             const system = utils.sanitizeString(formData.get('system')) || '';
             const location = utils.sanitizeString(formData.get('location')) || '未知';
+            const ipAddress = formData.get('ip_address');
+
+            // 获取地理位置信息
+            const locationInfo = await getLocationInfo(ipAddress);
 
             // 数据库操作
             let clientId;
@@ -176,8 +213,8 @@ const routeHandlers = {
                         uptime, cpu_percent, net_tx, net_rx, disks_total_kb,
                         disks_avail_kb, cpu_num_cores, mem_total, mem_free,
                         mem_used, swap_total, swap_free, process_count,
-                        connection_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        connection_count, country, ip_address
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `)
                 .bind(
                     clientId,
@@ -198,7 +235,9 @@ const routeHandlers = {
                     parseFloat(formData.get('swap_total')) || 0,
                     parseFloat(formData.get('swap_free')) || 0,
                     parseInt(formData.get('process_count')) || 0,
-                    parseInt(formData.get('connection_count')) || 0
+                    parseInt(formData.get('connection_count')) || 0,
+                    locationInfo?.country || 'Unknown',
+                    ipAddress
                 )
                 .run();
 
@@ -219,13 +258,18 @@ const routeHandlers = {
                 }
             );
         } catch (error) {
+            console.error('Error in handlePostStatus:', error);
             return utils.handleError(error);
         }
     },
 
     async handleGetLatestStatus(request, env) {
         try {
-            // 速率限制检查
+            if (!env.DB) {
+                console.error('Database binding not found');
+                return utils.handleError(new Error('数据库未配置'), 500);
+            }
+
             if (!await rateLimiter.checkLimit(request)) {
                 return utils.handleError(new Error(ERROR_MESSAGES.RATE_LIMIT), 429);
             }
@@ -233,9 +277,25 @@ const routeHandlers = {
             const { results } = await env.DB
                 .prepare(`
                     SELECT 
-                        c.machine_id, 
-                        c.name, 
-                        s.*
+                        c.machine_id,
+                        c.name,
+                        s.system,
+                        s.location,
+                        s.insert_utc_ts,
+                        s.uptime,
+                        s.cpu_percent,
+                        s.net_tx,
+                        s.net_rx,
+                        s.disks_total_kb,
+                        s.disks_avail_kb,
+                        s.cpu_num_cores,
+                        s.mem_total,
+                        s.mem_free,
+                        s.mem_used,
+                        s.swap_total,
+                        s.swap_free,
+                        s.process_count,
+                        s.connection_count
                     FROM status s
                     JOIN client c ON s.client_id = c.id
                     WHERE s.id IN (
@@ -243,11 +303,51 @@ const routeHandlers = {
                         FROM status
                         GROUP BY client_id
                     )
+                    ORDER BY s.insert_utc_ts DESC
                 `)
                 .run();
 
+            // 处理结果，计算负载值并确保所有字段存在
+            const processedResults = (results || []).map(server => {
+                const cpuPercent = parseFloat(server.cpu_percent) || 0;
+                const cpuCores = parseInt(server.cpu_num_cores) || 1;
+                
+                // 修改负载计算逻辑
+                // CPU 使用率转换为负载值的算法调整
+                // 负载值 = (CPU使用率 / 100) * CPU核心数
+                // 为了更真实的负载显示，我们调整计算方式
+                const baseLoad = (cpuPercent / 100);
+                const load_1min = Math.min(baseLoad * cpuCores, cpuCores * 4); // 限制最大值为核心数的4倍
+                const load_5min = Math.min(baseLoad * cpuCores * 0.9, cpuCores * 3); // 5分钟负载略低
+                const load_15min = Math.min(baseLoad * cpuCores * 0.8, cpuCores * 2); // 15分钟负载更低
+
+                return {
+                    ...server,
+                    // 确保负载值至少为 0.01，避免显示 0
+                    load_1min: Math.max(0.01, parseFloat(load_1min.toFixed(2))),
+                    load_5min: Math.max(0.01, parseFloat(load_5min.toFixed(2))),
+                    load_15min: Math.max(0.01, parseFloat(load_15min.toFixed(2))),
+                    name: server.name || '未命名',
+                    location: server.location || '未知',
+                    system: server.system || 'Unknown',
+                    uptime: parseInt(server.uptime) || 0,
+                    net_tx: parseInt(server.net_tx) || 0,
+                    net_rx: parseInt(server.net_rx) || 0,
+                    disks_total_kb: parseInt(server.disks_total_kb) || 0,
+                    disks_avail_kb: parseInt(server.disks_avail_kb) || 0,
+                    cpu_num_cores: cpuCores,
+                    mem_total: parseFloat(server.mem_total) || 0,
+                    mem_free: parseFloat(server.mem_free) || 0,
+                    mem_used: parseFloat(server.mem_used) || 0,
+                    swap_total: parseFloat(server.swap_total) || 0,
+                    swap_free: parseFloat(server.swap_free) || 0,
+                    process_count: parseInt(server.process_count) || 0,
+                    connection_count: parseInt(server.connection_count) || 0
+                };
+            });
+
             return new Response(
-                JSON.stringify(utils.formatResponse(true, results)),
+                JSON.stringify(utils.formatResponse(true, processedResults)),
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -257,30 +357,68 @@ const routeHandlers = {
                 }
             );
         } catch (error) {
+            console.error('Error in handleGetLatestStatus:', error);
             return utils.handleError(error);
         }
     },
 
     async handleGetIndex(request, env) {
         try {
-            const response = await fetch(
-                'https://raw.githubusercontent.com/heyuecock/zsan/refs/heads/main/index.html'
-            );
-            
-            if (!response.ok) {
-                throw new Error('Failed to fetch template');
+            const CACHE_TTL = 3600; // 缓存1小时
+            const now = Date.now() / 1000;
+
+            // 检查缓存是否有效
+            if (indexHtmlCache.content && (now - indexHtmlCache.timestamp) < CACHE_TTL) {
+                return new Response(indexHtmlCache.content, {
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600'
+                    }
+                });
             }
-            
-            const html = await response.text();
-            
-            return new Response(html, {
-                headers: { 
+
+            // 从 GitHub 获取最新内容
+            const response = await fetch(INDEX_HTML_URL, {
+                cf: {
+                    cacheTtl: CACHE_TTL,
+                    cacheEverything: true
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch index.html: ${response.status}`);
+            }
+
+            const content = await response.text();
+
+            // 更新缓存
+            indexHtmlCache = {
+                content,
+                timestamp: now
+            };
+
+            return new Response(content, {
+                headers: {
                     'Content-Type': 'text/html',
                     'Access-Control-Allow-Origin': '*',
                     'Cache-Control': 'public, max-age=3600'
-                },
+                }
             });
         } catch (error) {
+            console.error('Error in handleGetIndex:', error);
+            
+            // 如果有缓存内容,在出错时返回缓存
+            if (indexHtmlCache.content) {
+                return new Response(indexHtmlCache.content, {
+                    headers: {
+                        'Content-Type': 'text/html',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600'
+                    }
+                });
+            }
+            
             return utils.handleError(error);
         }
     },
@@ -310,6 +448,11 @@ const routeHandlers = {
 export default {
     async fetch(request, env) {
         try {
+            // 添加调试日志
+            console.log('Request URL:', request.url);
+            console.log('Request method:', request.method);
+            console.log('Database binding:', env.DB ? 'present' : 'missing');
+
             const url = new URL(request.url);
             const path = url.pathname;
             const method = request.method;
@@ -335,8 +478,10 @@ export default {
                 return await handler(request, env);
             }
 
+            console.error('Route not found:', routeKey);
             return utils.handleError(new Error(ERROR_MESSAGES.NOT_FOUND), 404);
         } catch (error) {
+            console.error('Error in fetch:', error);
             return utils.handleError(error);
         }
     }
