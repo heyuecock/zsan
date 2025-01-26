@@ -51,7 +51,7 @@
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
     
     <!-- 添加 flag-icons CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.6.6/css/flag-icons.min.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.11.0/css/flag-icons.min.css"/>
     
     <style>
         .server-row {
@@ -113,6 +113,10 @@
         .flag-icon {
             margin-right: 0.5rem;
             border-radius: 2px;
+            width: 1.5em;
+            height: 1.1em;
+            display: inline-block;
+            vertical-align: middle;
         }
     </style>
 </head>
@@ -268,7 +272,7 @@
                         }),
                         // 添加国旗图标
                         React.createElement('span', {
-                            className: `fi fi-${server.country_code?.toLowerCase() || 'xx'} flag-icon`
+                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon`
                         }),
                         React.createElement('span', {
                             className: 'font-medium'
