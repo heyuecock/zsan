@@ -29,14 +29,12 @@ Zsan 是一个轻量级（客户端内存占用 < 1MB）、高效（仅一个 .c
 5. 依次执行以下数据库创建命令：
 
 ```SQL
--- 创建客户端表
 CREATE TABLE IF NOT EXISTS client (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id TEXT NOT NULL UNIQUE,
     name TEXT
 );
 
--- 创建状态表
 CREATE TABLE IF NOT EXISTS status (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id INTEGER NOT NULL,
@@ -58,30 +56,21 @@ CREATE TABLE IF NOT EXISTS status (
     swap_free REAL,             
     process_count INTEGER,      
     connection_count INTEGER,   
-    ip_address TEXT,            -- 新增：IP地址
-    country TEXT,               -- 新增：国家名称
-    country_code TEXT,          -- 新增：国家代码（用于显示国旗）
-    city TEXT,                  -- 新增：城市
-    continent TEXT,             -- 新增：大洲
-    latitude REAL,              -- 新增：纬度
-    longitude REAL,             -- 新增：经度
+    ip_address TEXT,            
+    country_code TEXT,          
     FOREIGN KEY (client_id) REFERENCES client(id)
 );
 
--- 创建最新状态表
 CREATE TABLE IF NOT EXISTS latest_status (
     client_id INTEGER PRIMARY KEY,
     status_id INTEGER,
     insert_utc_ts INTEGER,
     ip_address TEXT,
     country_code TEXT,
-    country TEXT,
-    city TEXT,
     FOREIGN KEY (client_id) REFERENCES client(id),
     FOREIGN KEY (status_id) REFERENCES status(id)
 );
 
--- 创建触发器，在插入新状态时更新最新状态表
 CREATE TRIGGER IF NOT EXISTS update_latest_status
 AFTER INSERT ON status
 FOR EACH ROW
@@ -91,73 +80,22 @@ BEGIN
         status_id, 
         insert_utc_ts,
         ip_address,
-        country_code,
-        country,
-        city
+        country_code
     )
     VALUES (
         NEW.client_id, 
         NEW.id, 
         NEW.insert_utc_ts,
         NEW.ip_address,
-        NEW.country_code,
-        NEW.country,
-        NEW.city
+        NEW.country_code
     );
 END;
 
--- 创建索引以提升查询性能
 CREATE INDEX IF NOT EXISTS idx_client_machine_id ON client(machine_id);
 CREATE INDEX IF NOT EXISTS idx_status_client_id ON status(client_id);
 CREATE INDEX IF NOT EXISTS idx_status_insert_time ON status(insert_utc_ts);
 CREATE INDEX IF NOT EXISTS idx_status_ip_address ON status(ip_address);
 CREATE INDEX IF NOT EXISTS idx_status_country_code ON status(country_code);
-
--- 如果是在现有数据库上更新，需要执行以下 ALTER TABLE 语句
--- 注意：SQLite 不支持直接 ALTER TABLE DROP COLUMN，所以只添加新列
-
--- 为 status 表添加新列
-ALTER TABLE status ADD COLUMN ip_address TEXT;
-ALTER TABLE status ADD COLUMN country TEXT;
-ALTER TABLE status ADD COLUMN country_code TEXT;
-ALTER TABLE status ADD COLUMN city TEXT;
-ALTER TABLE status ADD COLUMN continent TEXT;
-ALTER TABLE status ADD COLUMN latitude REAL;
-ALTER TABLE status ADD COLUMN longitude REAL;
-
--- 为 latest_status 表添加新列
-ALTER TABLE latest_status ADD COLUMN ip_address TEXT;
-ALTER TABLE latest_status ADD COLUMN country_code TEXT;
-ALTER TABLE latest_status ADD COLUMN country TEXT;
-ALTER TABLE latest_status ADD COLUMN city TEXT;
-
--- 创建视图以方便查询最新状态
-CREATE VIEW IF NOT EXISTS v_latest_status AS
-SELECT 
-    c.machine_id,
-    c.name,
-    s.*
-FROM status s
-JOIN client c ON s.client_id = c.id
-JOIN latest_status ls ON s.id = ls.status_id;
-
--- 创建清理旧数据的触发器
-CREATE TRIGGER IF NOT EXISTS cleanup_old_status
-AFTER INSERT ON status
-BEGIN
-    DELETE FROM status 
-    WHERE id NOT IN (
-        SELECT id
-        FROM (
-            SELECT id
-            FROM status
-            WHERE client_id = NEW.client_id
-            ORDER BY insert_utc_ts DESC
-            LIMIT 10
-        )
-    )
-    AND client_id = NEW.client_id;
-END;
 ```
 
 #### 1.2 部署 Worker
@@ -173,7 +111,7 @@ END;
 在需要监控的服务器上运行：
 
 ```bash
-curl -L https://github.com/heyuecock/zsan/raw/refs/heads/main/zsan-client-install.sh -o zsan-client-install.sh
+curl -L https://github.com/heyuecock/zsan-server-worker/raw/refs/heads/main/zsan-client-install.sh -o zsan-client-install.sh
 chmod +x zsan-client-install.sh
 ./zsan-client-install.sh
 ```
@@ -186,13 +124,33 @@ chmod +x zsan-client-install.sh
 - 提供实时数据展示界面
 - 支持多服务器监控
 - 内置速率限制和安全保护
+- 自动识别服务器地理位置并显示国旗
 
 ### Zsan Client（客户端）
 - 基于 C 语言实现的轻量级客户端
+- 支持自动获取服务器IP地址
 - 支持自定义监控间隔
 - 自动重试机制
 - 内置日志记录
 - 支持多种 Linux 发行版
+
+## 功能特性
+
+### 基础监控
+- CPU 使用率和负载
+- 内存使用情况
+- 磁盘空间
+- 网络流量
+- 进程数量
+- 系统负载
+
+### 增强功能
+- 服务器地理位置显示
+- 国旗标识
+- IP地址显示
+- 实时状态更新
+- 深色模式支持
+- 响应式设计
 
 ## 详细配置
 
@@ -276,6 +234,8 @@ INTERVAL=10  # 监控间隔（秒）
 ## 更新日志
 
 ### v0.0.2 (2024-03-xx)
+- 添加服务器地理位置显示
+- 添加国旗标识功能
 - 优化 CPU 使用率计算方式
 - 添加数据自动清理机制
 - 改进前端界面显示
