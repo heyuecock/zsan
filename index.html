@@ -111,10 +111,10 @@
         }
         
         .flag-icon {
-            margin-right: 0.5rem;
+            margin: 0 0.5rem;
             border-radius: 2px;
-            width: 1.5em;
-            height: 1.1em;
+            width: 1.2em;
+            height: 0.9em;
             display: inline-block;
             vertical-align: middle;
         }
@@ -266,20 +266,20 @@
                     className: 'grid grid-cols-12 gap-4 p-4 cursor-pointer',
                     onClick: () => onToggle()
                 }, [
-                    // 状态、国旗和名称
+                    // 状态、名称和国旗
                     React.createElement('div', {
                         className: 'col-span-2 flex items-center gap-2'
                     }, [
                         React.createElement('span', {
                             className: `w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'}`
                         }),
-                        // 添加国旗图标
-                        React.createElement('span', {
-                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon`
-                        }),
                         React.createElement('span', {
                             className: 'font-medium'
                         }, server.name || '未命名'),
+                        // 国旗移到名称后面
+                        React.createElement('span', {
+                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon`
+                        }),
                         React.createElement('span', {
                             className: 'text-xs text-gray-500'
                         }, `${server.location || '未知'} (${server.ip_address || 'unknown'})`)
