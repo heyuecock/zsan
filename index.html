@@ -323,63 +323,12 @@
 
                     // 在线时间
                     React.createElement('div', {
-                        className: 'col-span-2 text-sm text-right'
+                        className: 'col-span-2 text-right'
                     }, formatUptime(server.uptime))
                 ]),
 
-                // 展开的详细信息
-                isExpanded && React.createElement('div', {
-                    className: 'p-4 bg-gray-50 dark:bg-gray-800'
-                }, [
-                    React.createElement(StatusBar, { server }),
-                    React.createElement('div', {
-                        className: 'grid grid-cols-2 gap-4 mt-4'
-                    }, [
-                        // 系统详情
-                        React.createElement('div', {
-                            className: 'space-y-4'
-                        }, [
-                            React.createElement('div', {
-                                className: 'bg-white dark:bg-gray-700 p-4 rounded-lg'
-                            }, [
-                                React.createElement('h4', {
-                                    className: 'font-medium mb-3'
-                                }, '系统详情'),
-                                React.createElement('div', {
-                                    className: 'space-y-2 text-sm'
-                                }, [
-                                    React.createElement('p', null, `系统: ${server.system}`),
-                                    React.createElement('p', null, `位置: ${server.location || '未知'}`),
-                                    React.createElement('p', null, `CPU: ${server.cpu_num_cores} 核`),
-                                    React.createElement('p', null, `进程: ${server.process_count}`),
-                                    React.createElement('p', null, `连接: ${server.connection_count}`)
-                                ])
-                            ])
-                        ]),
-
-                        // 资源使用
-                        React.createElement('div', {
-                            className: 'space-y-4'
-                        }, [
-                            React.createElement('div', {
-                                className: 'bg-white dark:bg-gray-700 p-4 rounded-lg'
-                            }, [
-                                React.createElement('h4', {
-                                    className: 'font-medium mb-3'
-                                }, '资源使用'),
-                                React.createElement('div', {
-                                    className: 'space-y-2 text-sm'
-                                }, [
-                                    React.createElement('p', null, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
-                                    React.createElement('p', null, `交换: ${formatBytes((server.swap_total - server.swap_free) * 1024 * 1024)} / ${formatBytes(server.swap_total * 1024 * 1024)}`),
-                                    React.createElement('p', null, `硬盘: ${formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024)} / ${formatBytes(server.disks_total_kb * 1024)}`),
-                                    React.createElement('p', null, `上传: ${formatBitRate(server.net_tx)}`),
-                                    React.createElement('p', null, `下载: ${formatBitRate(server.net_rx)}`)
-                                ])
-                            ])
-                        ])
-                    ])
-                ])
+                // 展开的详细信息部分
+                isExpanded && React.createElement(StatusBar, { server })
             ]);
         });
 
