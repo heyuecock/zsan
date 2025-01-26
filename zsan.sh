@@ -105,8 +105,8 @@ install_zsan() {
 
     # 校验上报地址
     log "校验上报地址..."
-    if ! curl -s "$REPORT_URL" | grep -q "kunlun"; then
-        error_exit "上报地址校验失败：返回内容不包含 'kunlun'"
+    if ! curl -s "$REPORT_URL" | grep -q "zsan"; then
+        error_exit "上报地址校验失败：返回内容不包含 'zsan'"
     fi
     log "上报地址校验通过！"
 
@@ -282,8 +282,15 @@ uninstall_zsan() {
 
     # 删除二进制文件和配置
     log "删除 zsan 文件..."
-    rm -f /opt/zsan/bin/zsan_amd64
-    rm -rf /etc/zsan
+    if $IS_ROOT; then
+        rm -rf /opt/zsan
+        rm -rf /etc/zsan
+        rm -rf /var/log/zsan
+    else
+        sudo rm -rf /opt/zsan
+        sudo rm -rf /etc/zsan
+        sudo rm -rf /var/log/zsan
+    fi
 
     log "zsan 已成功卸载！"
 }
