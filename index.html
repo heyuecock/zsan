@@ -266,21 +266,22 @@
                     className: 'grid grid-cols-12 gap-4 p-4 cursor-pointer',
                     onClick: () => onToggle()
                 }, [
-                    // 状态、国旗和名称（简化版）
+                    // 状态、名称和国旗（调整顺序）
                     React.createElement('div', {
                         className: 'col-span-2 flex items-center gap-2'
                     }, [
+                        // 状态指示点
                         React.createElement('span', {
                             className: `w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'}`
-                        }),
-                        // 国旗
-                        React.createElement('span', {
-                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon`
                         }),
                         // 服务器名称
                         React.createElement('span', {
                             className: 'font-medium'
-                        }, server.name || '未命名')
+                        }, server.name || '未命名'),
+                        // 国旗移到名称后面
+                        React.createElement('span', {
+                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon ml-2`
+                        })
                     ]),
 
                     // 系统负载
