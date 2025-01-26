@@ -254,9 +254,11 @@
             console.log('Country code:', server.country_code);
             
             const isOffline = Math.floor(Date.now() / 1000) - server.insert_utc_ts > 60;
-            const memoryUsage = (server.mem_used / server.mem_total) * 100;
-            const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb) * 100;
-            const cpuUsage = server.load_1min * 100 / server.cpu_num_cores;
+            
+            // 计算使用率百分比
+            const memoryUsage = (server.mem_used / server.mem_total * 100).toFixed(1);
+            const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb * 100).toFixed(1);
+            const cpuUsage = server.cpu_percent.toFixed(1);
 
             return React.createElement('div', {
                 className: 'server-row border-b dark:border-gray-700'
@@ -266,31 +268,31 @@
                     className: 'grid grid-cols-12 gap-4 p-4 cursor-pointer',
                     onClick: () => onToggle()
                 }, [
-                    // 状态、名称和国旗（调整顺序）
+                    // 状态、名称和国旗（2列）
                     React.createElement('div', {
                         className: 'col-span-2 flex items-center gap-2'
                     }, [
-                        // 状态指示点
                         React.createElement('span', {
                             className: `w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'}`
                         }),
-                        // 服务器名称
                         React.createElement('span', {
                             className: 'font-medium'
                         }, server.name || '未命名'),
-                        // 国旗移到名称后面
                         React.createElement('span', {
                             className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon ml-2`
                         })
                     ]),
 
-                    // 系统负载
+                    // CPU使用率（3列）
                     React.createElement('div', {
                         className: 'col-span-3'
                     }, [
                         React.createElement('div', {
-                            className: 'text-sm mb-1'
-                        }, `负载: ${server.load_1min.toFixed(2)} | ${server.load_5min.toFixed(2)} | ${server.load_15min.toFixed(2)}`),
+                            className: 'flex justify-between text-sm mb-1'
+                        }, [
+                            React.createElement('span', null, 'CPU'),
+                            React.createElement('span', null, `${cpuUsage}%`)
+                        ]),
                         React.createElement(ProgressBar, {
                             value: cpuUsage,
                             warningThreshold: 60,
@@ -298,31 +300,41 @@
                         })
                     ]),
 
-                    // 内存使用
+                    // 内存使用率（3列）
                     React.createElement('div', {
                         className: 'col-span-3'
                     }, [
                         React.createElement('div', {
-                            className: 'text-sm mb-1'
-                        }, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
+                            className: 'flex justify-between text-sm mb-1'
+                        }, [
+                            React.createElement('span', null, '内存'),
+                            React.createElement('span', null, `${memoryUsage}%`)
+                        ]),
                         React.createElement(ProgressBar, {
-                            value: memoryUsage
+                            value: memoryUsage,
+                            warningThreshold: 70,
+                            dangerThreshold: 90
                         })
                     ]),
 
-                    // 网络速率
+                    // 硬盘使用率（2列）
                     React.createElement('div', {
-                        className: 'col-span-2 network-stats'
+                        className: 'col-span-2'
                     }, [
                         React.createElement('div', {
-                            className: 'text-sm'
-                        }, `↑ ${formatBytes(server.net_tx)}/s`),
-                        React.createElement('div', {
-                            className: 'text-sm'
-                        }, `↓ ${formatBytes(server.net_rx)}/s`)
+                            className: 'flex justify-between text-sm mb-1'
+                        }, [
+                            React.createElement('span', null, '硬盘'),
+                            React.createElement('span', null, `${diskUsage}%`)
+                        ]),
+                        React.createElement(ProgressBar, {
+                            value: diskUsage,
+                            warningThreshold: 75,
+                            dangerThreshold: 90
+                        })
                     ]),
 
-                    // 在线时间
+                    // 在线时间（2列）
                     React.createElement('div', {
                         className: 'col-span-2 text-right'
                     }, formatUptime(server.uptime))
