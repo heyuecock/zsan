@@ -1,322 +1,490 @@
-#!/bin/bash
-
-# 错误处理函数
-error_exit() {
-    echo "错误: $1" >&2
-    exit 1
-}
-
-# 日志函数
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-}
-
-# 检查命令是否存在
-check_command() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        error_exit "未找到命令: $1，请先安装"
-    fi
-}
-
-# 检查是否为 root 用户
-if [ "$EUID" -eq 0 ]; then
-    IS_ROOT=true
-else
-    IS_ROOT=false
-fi
-
-# 识别发行版
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$ID
-else
-    error_exit "无法识别发行版！"
-fi
-
-# 安装前环境检查
-pre_install_check() {
-    log "执行安装前检查..."
+<!DOCTYPE html>
+<html lang="zh-Hans" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zsan 服务器监控</title>
     
-    # 检查必需命令
-    check_command curl
-    check_command systemctl
-    
-    # 检查目录权限
-    if [ ! -w /etc/systemd/system ] && ! sudo -n true 2>/dev/null; then
-        error_exit "没有 systemd 服务目录的写入权限，且无法使用 sudo"
-    fi
-    
-    # 检查内存
-    total_mem=$(free -m | awk '/^Mem:/{print $2}')
-    if [ "$total_mem" -lt 100 ]; then
-        error_exit "内存不足（小于100MB）"
-    fi
-    
-    log "环境检查通过"
-}
-
-# 安装 zsan
-install_zsan() {
-    pre_install_check
-    
-    # 第一步：安装 curl（如果需要）
-    log "检查并安装依赖..."
-    case $OS in
-        ubuntu|debian)
-            if $IS_ROOT; then
-                apt update && apt install -y curl || error_exit "安装 curl 失败"
-            else
-                sudo apt update && sudo apt install -y curl || error_exit "安装 curl 失败"
-            fi
-            ;;
-        centos|rhel|fedora)
-            if $IS_ROOT; then
-                yum install -y curl || error_exit "安装 curl 失败"
-            else
-                sudo yum install -y curl || error_exit "安装 curl 失败"
-            fi
-            ;;
-        arch)
-            if $IS_ROOT; then
-                pacman -S --noconfirm curl || error_exit "安装 curl 失败"
-            else
-                sudo pacman -S --noconfirm curl || error_exit "安装 curl 失败"
-            fi
-            ;;
-        *)
-            error_exit "不支持的发行版: $OS"
-            ;;
-    esac
-
-    # 获取服务器配置信息
-    read -p "请输入服务器名称: " SERVER_NAME
-    SERVER_NAME=${SERVER_NAME:-"未命名服务器"}
-
-    # 移除服务器位置的手动输入
-    SERVER_LOCATION=""  # 留空，由服务端根据 IP 自动判断
-
-    read -p "请输入监测间隔（秒，默认 10）: " INTERVAL
-    INTERVAL=${INTERVAL:-10}
-
-    read -p "请输入上报地址（例如 https://example.com/status）: " REPORT_URL
-    if [ -z "$REPORT_URL" ]; then
-        error_exit "上报地址不能为空！"
-    fi
-
-    # 校验上报地址
-    log "校验上报地址..."
-    RESPONSE=$(curl -s "$REPORT_URL")
-    if [ $? -ne 0 ]; then
-        error_exit "无法连接到上报地址"
-    fi
-
-    # 检查响应内容
-    if ! echo "$RESPONSE" | grep -q "success" && ! echo "$RESPONSE" | grep -q "zsan"; then
-        log "警告: 上报地址返回的内容可能不正确，但将继续安装"
-    fi
-    log "上报地址校验通过！"
-
-    # 创建必要的目录
-    log "创建必要的目录..."
-    if $IS_ROOT; then
-        mkdir -p /opt/zsan/bin || error_exit "创建二进制目录失败"
-        mkdir -p /etc/zsan || error_exit "创建配置目录失败"
-        mkdir -p /var/log/zsan || error_exit "创建日志目录失败"
+    <!-- CDN 资源加载失败后的备用方案 -->
+    <script>
+        function loadFallbackScript(src) {
+            const script = document.createElement('script');
+            script.src = src;
+            document.head.appendChild(script);
+        }
         
-        # 创建日志文件并设置正确的权限
-        touch /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "创建日志文件失败"
-        chmod 644 /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "设置日志文件权限失败"
-        chmod 755 /var/log/zsan || error_exit "设置日志目录权限失败"
-        chown -R root:root /var/log/zsan || error_exit "设置日志目录所有者失败"
-    else
-        sudo mkdir -p /opt/zsan/bin || error_exit "创建二进制目录失败"
-        sudo mkdir -p /etc/zsan || error_exit "创建配置目录失败"
-        sudo mkdir -p /var/log/zsan || error_exit "创建日志目录失败"
-        
-        # 创建日志文件并设置正确的权限
-        sudo touch /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "创建日志文件失败"
-        sudo chmod 644 /var/log/zsan/zsan.log /var/log/zsan/zsan.error.log || error_exit "设置日志文件权限失败"
-        sudo chmod 755 /var/log/zsan || error_exit "设置日志目录权限失败"
-        sudo chown -R root:root /var/log/zsan || error_exit "设置日志目录所有者失败"
-    fi
-
-    # 拉取 zsan 二进制文件
-    log "拉取 zsan 二进制文件..."
-    if ! curl -L https://github.com/heyuecock/zsan/releases/download/v0.0.1/zsan_amd64 -o /tmp/zsan_amd64; then
-        error_exit "下载 zsan 二进制文件失败"
-    fi
+        window.addEventListener('error', function(e) {
+            if (e.target.tagName === 'SCRIPT') {
+                const src = e.target.src;
+                if (src.includes('tailwindcss')) {
+                    loadFallbackScript('https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js');
+                } else if (src.includes('chart.js')) {
+                    loadFallbackScript('https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js');
+                } else if (src.includes('react')) {
+                    loadFallbackScript('https://cdnjs.cloudflare.com/ajax/libs/react/17.0.2/umd/react.production.min.js');
+                } else if (src.includes('react-dom')) {
+                    loadFallbackScript('https://cdnjs.cloudflare.com/ajax/libs/react-dom/17.0.2/umd/react-dom.production.min.js');
+                }
+            }
+        }, true);
+    </script>
     
-    if $IS_ROOT; then
-        mv /tmp/zsan_amd64 /opt/zsan/bin/zsan_amd64 || error_exit "移动二进制文件失败"
-        chmod 755 /opt/zsan/bin/zsan_amd64 || error_exit "设置可执行权限失败"
-    else
-        sudo mv /tmp/zsan_amd64 /opt/zsan/bin/zsan_amd64 || error_exit "移动二进制文件失败"
-        sudo chmod 755 /opt/zsan/bin/zsan_amd64 || error_exit "设置可执行权限失败"
-    fi
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 配置 Tailwind 深色模式
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    screens: {
+                        'sm': '640px',
+                        'md': '768px',
+                        'lg': '1024px',
+                        'xl': '1280px',
+                        '2xl': '1536px',
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+    
+    <!-- 添加 flag-icons CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.11.0/css/flag-icons.min.css"/>
+    
+    <style>
+        .server-row {
+            transition: all 0.2s ease;
+        }
+        .server-row:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        .dark .server-row:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        .network-stats {
+            font-family: monospace;
+        }
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
+        
+        /* 添加响应式设计样式 */
+        @media (max-width: 640px) {
+            .grid-cols-12 {
+                grid-template-columns: repeat(1, minmax(0, 1fr));
+            }
+            .col-span-2 {
+                grid-column: span 1 / span 1;
+            }
+        }
+        
+        /* 添加加载动画 */
+        .loading {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 添加错误提示样式 */
+        .error-message {
+            background-color: #fee2e2;
+            border-left: 4px solid #ef4444;
+            color: #991b1b;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0.375rem;
+        }
+        
+        .dark .error-message {
+            background-color: #7f1d1d;
+            color: #fecaca;
+        }
+        
+        .flag-icon {
+            margin: 0 0.5rem;
+            border-radius: 2px;
+            width: 1.2em;
+            height: 0.9em;
+            display: inline-block;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 dark:bg-[#0f172a] dark:text-white">
+    <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/react@17.0.2/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@17/umd/react-dom.production.min.js"></script>
+    <script>
+        const { useState, useEffect, useRef, useMemo } = React;
 
-    # 创建配置文件
-    log "创建配置文件..."
-    CONFIG_FILE=/etc/zsan/config
-    if $IS_ROOT; then
-        cat > "$CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
-SERVER_NAME="$SERVER_NAME"
-REPORT_URL="$REPORT_URL"
-INTERVAL=$INTERVAL
-EOF
-        chmod 644 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
-        chown root:root "$CONFIG_FILE" || error_exit "设置配置文件所有者失败"
-    else
-        sudo bash -c "cat > $CONFIG_FILE" <<EOF || error_exit "创建配置文件失败"
-SERVER_NAME="$SERVER_NAME"
-REPORT_URL="$REPORT_URL"
-INTERVAL=$INTERVAL
-EOF
-        sudo chmod 644 "$CONFIG_FILE" || error_exit "设置配置文件权限失败"
-        sudo chown root:root "$CONFIG_FILE" || error_exit "设置配置文件所有者失败"
-    fi
+        // 错误边界组件
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            
+            render() {
+                if (this.state.hasError) {
+                    return React.createElement('div', { className: 'error-message' },
+                        `发生错误: ${this.state.error.message}`
+                    );
+                }
+                return this.props.children;
+            }
+        }
 
-    # 配置 systemd 服务
-    log "配置 systemd 服务..."
-    SERVICE_NAME="zsan"
-    SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME.service"
+        // 主题切换组件
+        const ThemeToggle = React.memo(() => {
+            const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
+            
+            const toggleTheme = () => {
+                document.documentElement.classList.toggle('dark');
+                setIsDark(!isDark);
+            };
+            
+            return React.createElement('button', {
+                className: 'fixed bottom-4 right-4 p-2 rounded-full bg-gray-200 dark:bg-gray-700',
+                onClick: toggleTheme
+            }, React.createElement('i', {
+                className: `fas fa-${isDark ? 'sun' : 'moon'}`
+            }));
+        });
 
-    # 创建 systemd 服务文件
-    SERVICE_CONTENT="[Unit]
-Description=zsan System Monitor
-After=network.target
+        // 格式化工具函数
+        const formatBytes = (bytes, decimals = 2) => {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        };
 
-[Service]
-Type=simple
-ExecStart=/opt/zsan/bin/zsan_amd64 -s $INTERVAL -u $REPORT_URL
-Environment=SERVER_NAME=$SERVER_NAME
-Environment=HOME=/root
-Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-WorkingDirectory=/var/log/zsan
-Restart=always
-RestartSec=10
+        // 添加网络速率格式化函数
+        const formatBitRate = (bytesPerSec, decimals = 2) => {
+            if (bytesPerSec === 0) return '0 B/s';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
+            const i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
+            return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        };
 
-# 日志配置
-StandardOutput=append:/var/log/zsan/zsan.log
-StandardError=append:/var/log/zsan/zsan.error.log
+        const formatUptime = (seconds) => {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return `${days}天 ${hours}小时 ${minutes}分钟`;
+        };
 
-# 进程权限
-User=root
-Group=root
+        // 进度条组件
+        const ProgressBar = React.memo(({ value, max = 100, warningThreshold = 70, dangerThreshold = 90 }) => {
+            const percentage = (value / max) * 100;
+            let colorClass = 'bg-green-500';
+            if (percentage >= dangerThreshold) {
+                colorClass = 'bg-red-500';
+            } else if (percentage >= warningThreshold) {
+                colorClass = 'bg-yellow-500';
+            }
 
-# 调试选项
-KillMode=process
-TimeoutStopSec=5
-SyslogIdentifier=zsan
+            return React.createElement('div', {
+                className: 'w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700'
+            }, [
+                React.createElement('div', {
+                    className: `progress-bar ${colorClass} h-2.5 rounded-full`,
+                    style: { width: `${Math.min(percentage, 100)}%` }
+                })
+            ]);
+        });
 
-[Install]
-WantedBy=multi-user.target"
+        // 添加新的状态栏组件
+        const StatusBar = React.memo(({ server }) => {
+            return React.createElement('div', {
+                className: 'grid grid-cols-7 gap-4 p-3 text-sm border-b dark:border-gray-700'
+            }, [
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '系统: '),
+                    React.createElement('span', null, server.system)
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '在线: '),
+                    React.createElement('span', null, formatUptime(server.uptime))
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, 'CPU: '),
+                    React.createElement('span', null, `${server.cpu_num_cores} 核`)
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '内存: '),
+                    React.createElement('span', null, formatBytes(server.mem_total * 1024 * 1024))
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '硬盘: '),
+                    React.createElement('span', null, formatBytes(server.disks_total_kb * 1024))
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '进程: '),
+                    React.createElement('span', null, server.process_count)
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '连接: '),
+                    React.createElement('span', null, server.connection_count)
+                ])
+            ]);
+        });
 
-    # 创建服务文件
-    if $IS_ROOT; then
-        echo "$SERVICE_CONTENT" > "$SERVICE_PATH" || error_exit "创建服务文件失败"
-    else
-        echo "$SERVICE_CONTENT" | sudo tee "$SERVICE_PATH" > /dev/null || error_exit "创建服务文件失败"
-    fi
+        // 修改服务器行组件，添加更多信息
+        const ServerRow = React.memo(({ server, isExpanded, onToggle }) => {
+            console.log('Rendering server:', server);
+            console.log('Country code:', server.country_code);
+            
+            const isOffline = Math.floor(Date.now() / 1000) - server.insert_utc_ts > 60;
+            const memoryUsage = (server.mem_used / server.mem_total) * 100;
+            const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb) * 100;
+            const cpuUsage = server.load_1min * 100 / server.cpu_num_cores;
 
-    # 重载 systemd 配置
-    log "重载 systemd 配置..."
-    if $IS_ROOT; then
-        systemctl daemon-reload || error_exit "重载 systemd 配置失败"
-    else
-        sudo systemctl daemon-reload || error_exit "重载 systemd 配置失败"
-    fi
+            return React.createElement('div', {
+                className: 'server-row border-b dark:border-gray-700'
+            }, [
+                // 主要信息行
+                React.createElement('div', {
+                    className: 'grid grid-cols-12 gap-4 p-4 cursor-pointer',
+                    onClick: () => onToggle()
+                }, [
+                    // 状态、国旗和名称（简化版）
+                    React.createElement('div', {
+                        className: 'col-span-2 flex items-center gap-2'
+                    }, [
+                        React.createElement('span', {
+                            className: `w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'}`
+                        }),
+                        // 国旗
+                        React.createElement('span', {
+                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon`
+                        }),
+                        // 服务器名称
+                        React.createElement('span', {
+                            className: 'font-medium'
+                        }, server.name || '未命名')
+                    ]),
 
-    # 在服务启动前添加权限检查
-    log "检查日志文件权限..."
-    if [ ! -w "/var/log/zsan/zsan.log" ] || [ ! -w "/var/log/zsan/zsan.error.log" ]; then
-        error_exit "日志文件权限不正确"
-    fi
+                    // 系统负载
+                    React.createElement('div', {
+                        className: 'col-span-3'
+                    }, [
+                        React.createElement('div', {
+                            className: 'text-sm mb-1'
+                        }, `负载: ${server.load_1min.toFixed(2)} | ${server.load_5min.toFixed(2)} | ${server.load_15min.toFixed(2)}`),
+                        React.createElement(ProgressBar, {
+                            value: cpuUsage,
+                            warningThreshold: 60,
+                            dangerThreshold: 80
+                        })
+                    ]),
 
-    # 启动并启用服务
-    log "启动服务..."
-    if $IS_ROOT; then
-        systemctl start $SERVICE_NAME || error_exit "启动服务失败"
-        systemctl enable $SERVICE_NAME || error_exit "启用服务失败"
-    else
-        sudo systemctl start $SERVICE_NAME || error_exit "启动服务失败"
-        sudo systemctl enable $SERVICE_NAME || error_exit "启用服务失败"
-    fi
+                    // 内存使用
+                    React.createElement('div', {
+                        className: 'col-span-3'
+                    }, [
+                        React.createElement('div', {
+                            className: 'text-sm mb-1'
+                        }, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
+                        React.createElement(ProgressBar, {
+                            value: memoryUsage
+                        })
+                    ]),
 
-    log "zsan 已成功安装并启动！"
-    log "使用以下命令查看状态："
-    log "systemctl status $SERVICE_NAME"
-}
+                    // 网络速率
+                    React.createElement('div', {
+                        className: 'col-span-2 network-stats'
+                    }, [
+                        React.createElement('div', {
+                            className: 'text-sm'
+                        }, `↑ ${formatBytes(server.net_tx)}/s`),
+                        React.createElement('div', {
+                            className: 'text-sm'
+                        }, `↓ ${formatBytes(server.net_rx)}/s`)
+                    ]),
 
-# 卸载 zsan
-uninstall_zsan() {
-    log "开始卸载 zsan..."
-    SERVICE_NAME="zsan"
+                    // 在线时间
+                    React.createElement('div', {
+                        className: 'col-span-2 text-sm text-right'
+                    }, formatUptime(server.uptime))
+                ]),
 
-    # 停止并禁用服务
-    if systemctl is-active --quiet $SERVICE_NAME; then
-        log "停止 zsan 服务..."
-        if $IS_ROOT; then
-            systemctl stop $SERVICE_NAME || error_exit "停止服务失败"
-        else
-            sudo systemctl stop $SERVICE_NAME || error_exit "停止服务失败"
-        fi
-    fi
+                // 展开的详细信息
+                isExpanded && React.createElement('div', {
+                    className: 'p-4 bg-gray-50 dark:bg-gray-800'
+                }, [
+                    React.createElement(StatusBar, { server }),
+                    React.createElement('div', {
+                        className: 'grid grid-cols-2 gap-4 mt-4'
+                    }, [
+                        // 系统详情
+                        React.createElement('div', {
+                            className: 'space-y-4'
+                        }, [
+                            React.createElement('div', {
+                                className: 'bg-white dark:bg-gray-700 p-4 rounded-lg'
+                            }, [
+                                React.createElement('h4', {
+                                    className: 'font-medium mb-3'
+                                }, '系统详情'),
+                                React.createElement('div', {
+                                    className: 'space-y-2 text-sm'
+                                }, [
+                                    React.createElement('p', null, `系统: ${server.system}`),
+                                    React.createElement('p', null, `位置: ${server.location || '未知'}`),
+                                    React.createElement('p', null, `CPU: ${server.cpu_num_cores} 核`),
+                                    React.createElement('p', null, `进程: ${server.process_count}`),
+                                    React.createElement('p', null, `连接: ${server.connection_count}`)
+                                ])
+                            ])
+                        ]),
 
-    if systemctl is-enabled --quiet $SERVICE_NAME; then
-        log "禁用 zsan 服务..."
-        if $IS_ROOT; then
-            systemctl disable $SERVICE_NAME || error_exit "禁用服务失败"
-        else
-            sudo systemctl disable $SERVICE_NAME || error_exit "禁用服务失败"
-        fi
-    fi
+                        // 资源使用
+                        React.createElement('div', {
+                            className: 'space-y-4'
+                        }, [
+                            React.createElement('div', {
+                                className: 'bg-white dark:bg-gray-700 p-4 rounded-lg'
+                            }, [
+                                React.createElement('h4', {
+                                    className: 'font-medium mb-3'
+                                }, '资源使用'),
+                                React.createElement('div', {
+                                    className: 'space-y-2 text-sm'
+                                }, [
+                                    React.createElement('p', null, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
+                                    React.createElement('p', null, `交换: ${formatBytes((server.swap_total - server.swap_free) * 1024 * 1024)} / ${formatBytes(server.swap_total * 1024 * 1024)}`),
+                                    React.createElement('p', null, `硬盘: ${formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024)} / ${formatBytes(server.disks_total_kb * 1024)}`),
+                                    React.createElement('p', null, `上传: ${formatBitRate(server.net_tx)}`),
+                                    React.createElement('p', null, `下载: ${formatBitRate(server.net_rx)}`)
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
+            ]);
+        });
 
-    # 删除服务文件
-    if [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
-        log "删除 systemd 服务文件..."
-        if $IS_ROOT; then
-            rm -f "/etc/systemd/system/$SERVICE_NAME.service" || error_exit "删除服务文件失败"
-            systemctl daemon-reload
-        else
-            sudo rm -f "/etc/systemd/system/$SERVICE_NAME.service" || error_exit "删除服务文件失败"
-            sudo systemctl daemon-reload
-        fi
-    fi
+        // App 组件
+        function App() {
+            const [servers, setServers] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [expandedServers, setExpandedServers] = useState(new Set());
 
-    # 删除二进制文件和配置
-    log "删除 zsan 文件..."
-    if $IS_ROOT; then
-        rm -rf /opt/zsan
-        rm -rf /etc/zsan
-        rm -rf /var/log/zsan
-    else
-        sudo rm -rf /opt/zsan
-        sudo rm -rf /etc/zsan
-        sudo rm -rf /var/log/zsan
-    fi
+            useEffect(() => {
+                const fetchData = async () => {
+                    try {
+                        const response = await fetch('/status/latest');
+                        if (!response.ok) {
+                            throw new Error('服务器响应错误');
+                        }
+                        const data = await response.json();
+                        console.log('API Response:', data);
+                        
+                        if (data.success && Array.isArray(data.data)) {
+                            const processedData = data.data.map(server => {
+                                console.log('Server country_code:', server.country_code);
+                                return server;
+                            });
+                            setServers(processedData);
+                            setError(null);
+                        } else {
+                            throw new Error(data.error || '获取数据失败');
+                        }
+                    } catch (error) {
+                        console.error('Error fetching data:', error);
+                        setError(error.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
 
-    log "zsan 已成功卸载！"
-}
+                fetchData();
+                const interval = setInterval(fetchData, 10000);
+                return () => clearInterval(interval);
+            }, []);
 
-# 主菜单
-main() {
-    echo "请选择操作："
-    echo "1. 安装 zsan"
-    echo "2. 卸载 zsan"
-    read -p "请输入选项（1 或 2）: " CHOICE
+            const toggleServer = (machineId) => {
+                setExpandedServers(prev => {
+                    const next = new Set(prev);
+                    if (next.has(machineId)) {
+                        next.delete(machineId);
+                    } else {
+                        next.add(machineId);
+                    }
+                    return next;
+                });
+            };
 
-    case $CHOICE in
-        1)
-            install_zsan
-            ;;
-        2)
-            uninstall_zsan
-            ;;
-        *)
-            error_exit "无效选项！"
-            ;;
-    esac
-}
+            const onlineCount = useMemo(() => 
+                servers.filter(s => !((Date.now() / 1000) - s.insert_utc_ts > 60)).length,
+                [servers]
+            );
 
-# 执行主菜单
-main
+            return React.createElement(ErrorBoundary, null, [
+                React.createElement('div', { className: 'container mx-auto px-4 py-8' }, [
+                    // 头部
+                    React.createElement('div', { className: 'flex justify-between items-center mb-8' }, [
+                        React.createElement('div', null, [
+                            React.createElement('h1', { 
+                                className: 'text-2xl font-bold dark:text-white' 
+                            }, 'Zsan 服务器监控'),
+                            React.createElement('p', { 
+                                className: 'text-gray-600 dark:text-gray-400 mt-1' 
+                            }, `在线: ${onlineCount}/${servers.length}`)
+                        ])
+                    ]),
+
+                    // 加载状态
+                    loading && React.createElement('div', { 
+                        className: 'flex justify-center items-center py-8' 
+                    }, React.createElement('div', { className: 'loading' })),
+
+                    // 错误提示
+                    error && React.createElement('div', { 
+                        className: 'error-message' 
+                    }, error),
+
+                    // 服务器列表
+                    !loading && !error && React.createElement('div', { 
+                        className: 'bg-white dark:bg-[#1e293b] rounded-lg shadow overflow-hidden' 
+                    },
+                        servers.map(server =>
+                            React.createElement(ServerRow, { 
+                                key: server.machine_id,
+                                server: server,
+                                isExpanded: expandedServers.has(server.machine_id),
+                                onToggle: () => toggleServer(server.machine_id)
+                            })
+                        )
+                    ),
+
+                    // 主题切换按钮
+                    React.createElement(ThemeToggle)
+                ])
+            ]);
+        }
+
+        ReactDOM.render(React.createElement(App), document.getElementById('root'));
+    </script>
+</body>
+</html>
