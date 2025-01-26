@@ -26,6 +26,14 @@ let indexHtmlCache = {
     timestamp: 0
 };
 
+// 添加国家代码映射
+const COUNTRY_CODE_MAP = {
+    'hk': 'cn',  // 香港映射到中国
+    'mo': 'cn',  // 澳门映射到中国
+    'tw': 'tw',  // 台湾保持不变
+    'xx': 'xx'   // 未知地区
+};
+
 // 工具函数
 const utils = {
     validateMetrics: (data) => {
@@ -134,21 +142,31 @@ class RateLimiter {
 
 const rateLimiter = new RateLimiter();
 
-// 添加地理位置查询函数
-async function getLocationInfo(ip) {
+// 修改 getLocationInfo 函数
+async function getLocationInfo(request) {
     try {
-        // 使用 Cloudflare 的请求头获取地理位置信息
-        return {
-            country: request.cf.country || 'Unknown',
-            city: request.cf.city || 'Unknown',
-            continent: request.cf.continent || 'Unknown',
-            latitude: request.cf.latitude || 0,
-            longitude: request.cf.longitude || 0,
-            country_code: request.cf.country_code || 'unknown'
+        console.log('CF headers:', request.cf);
+        console.log('Request headers:', Object.fromEntries(request.headers));
+        
+        const rawCountryCode = (request.cf?.country || 'xx').toLowerCase();
+        const mappedCountryCode = COUNTRY_CODE_MAP[rawCountryCode] || rawCountryCode;
+        
+        const locationInfo = {
+            country: request.cf?.country || 'Unknown',
+            city: request.cf?.city || 'Unknown',
+            continent: request.cf?.continent || 'Unknown',
+            latitude: request.cf?.latitude || 0,
+            longitude: request.cf?.longitude || 0,
+            country_code: mappedCountryCode
         };
+        
+        console.log('Location info:', locationInfo);
+        return locationInfo;
     } catch (error) {
         console.error('Error getting location info:', error);
-        return null;
+        return {
+            country_code: 'xx'
+        };
     }
 }
 
@@ -182,7 +200,11 @@ const routeHandlers = {
             const ipAddress = formData.get('ip_address');
 
             // 获取地理位置信息
-            const locationInfo = await getLocationInfo(ipAddress);
+            const locationInfo = await getLocationInfo(request);
+
+            // 在 handlePostStatus 中添加日志
+            console.log('Location info:', locationInfo);
+            console.log('Inserting status with country_code:', locationInfo?.country_code);
 
             // 数据库操作
             let clientId;
@@ -213,7 +235,7 @@ const routeHandlers = {
                         uptime, cpu_percent, net_tx, net_rx, disks_total_kb,
                         disks_avail_kb, cpu_num_cores, mem_total, mem_free,
                         mem_used, swap_total, swap_free, process_count,
-                        connection_count, country, ip_address
+                        connection_count, ip_address, country_code
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `)
                 .bind(
@@ -236,8 +258,8 @@ const routeHandlers = {
                     parseFloat(formData.get('swap_free')) || 0,
                     parseInt(formData.get('process_count')) || 0,
                     parseInt(formData.get('connection_count')) || 0,
-                    locationInfo?.country || 'Unknown',
-                    ipAddress
+                    ipAddress,
+                    locationInfo?.country_code || 'xx'
                 )
                 .run();
 
@@ -278,24 +300,7 @@ const routeHandlers = {
                 .prepare(`
                     SELECT 
                         c.machine_id,
-                        c.name,
-                        s.system,
-                        s.location,
-                        s.insert_utc_ts,
-                        s.uptime,
-                        s.cpu_percent,
-                        s.net_tx,
-                        s.net_rx,
-                        s.disks_total_kb,
-                        s.disks_avail_kb,
-                        s.cpu_num_cores,
-                        s.mem_total,
-                        s.mem_free,
-                        s.mem_used,
-                        s.swap_total,
-                        s.swap_free,
-                        s.process_count,
-                        s.connection_count
+                        s.*
                     FROM status s
                     JOIN client c ON s.client_id = c.id
                     WHERE s.id IN (
@@ -306,6 +311,9 @@ const routeHandlers = {
                     ORDER BY s.insert_utc_ts DESC
                 `)
                 .run();
+
+            // 在 handleGetLatestStatus 中添加日志
+            console.log('Retrieved results:', results);
 
             // 处理结果，计算负载值并确保所有字段存在
             const processedResults = (results || []).map(server => {
@@ -321,6 +329,9 @@ const routeHandlers = {
                 const load_5min = Math.min(baseLoad * cpuCores * 0.9, cpuCores * 3); // 5分钟负载略低
                 const load_15min = Math.min(baseLoad * cpuCores * 0.8, cpuCores * 2); // 15分钟负载更低
 
+                const rawCountryCode = (server.country_code || 'xx').toLowerCase();
+                const mappedCountryCode = COUNTRY_CODE_MAP[rawCountryCode] || rawCountryCode;
+                
                 return {
                     ...server,
                     // 确保负载值至少为 0.01，避免显示 0
@@ -342,7 +353,8 @@ const routeHandlers = {
                     swap_total: parseFloat(server.swap_total) || 0,
                     swap_free: parseFloat(server.swap_free) || 0,
                     process_count: parseInt(server.process_count) || 0,
-                    connection_count: parseInt(server.connection_count) || 0
+                    connection_count: parseInt(server.connection_count) || 0,
+                    country_code: mappedCountryCode
                 };
             });
 
