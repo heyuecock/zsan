@@ -16,6 +16,9 @@
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 
+// 添加函数声明
+void log_message(const char *level, const char *format, ...);
+
 // 首先定义所有结构体
 typedef struct {
     char name[64];                 // 服务器名称
@@ -621,6 +624,14 @@ int send_post_request(const char *url, const char *data) {
                 data, url, temp_file);
                 
         int result = system(command);
+        if (result != 0) {
+            log_message("ERROR", "Command execution failed with code: %d", result);
+            unlink(temp_file);
+            if (retry < max_retries - 1) {
+                continue;
+            }
+            return -1;
+        }
         
         // 读取响应
         FILE *fp = fopen(temp_file, "r");
