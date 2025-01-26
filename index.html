@@ -215,36 +215,107 @@
         // 修改 StatusBar 组件
         const StatusBar = React.memo(({ server }) => {
             return React.createElement('div', {
-                className: 'grid grid-cols-7 gap-4 p-3 text-sm border-b dark:border-gray-700'
+                className: 'grid grid-cols-1 gap-2 p-4 text-sm border-b dark:border-gray-700'
             }, [
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '系统: '),
+                // 系统信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '系统:'),
                     React.createElement('span', null, server.system)
                 ]),
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '负载: '),
+                
+                // 负载信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '负载:'),
                     React.createElement('span', null, 
                         `${server.load_1min.toFixed(2)} / ${server.load_5min.toFixed(2)} / ${server.load_15min.toFixed(2)}`
                     )
                 ]),
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, 'CPU: '),
+                
+                // CPU信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, 'CPU:'),
                     React.createElement('span', null, `${server.cpu_num_cores} 核`)
                 ]),
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '内存: '),
+                
+                // 内存信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '内存:'),
                     React.createElement('span', null, formatBytes(server.mem_total * 1024 * 1024))
                 ]),
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '硬盘: '),
+                
+                // 交换分区信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, 'SWAP:'),
+                    React.createElement('span', null, formatBytes(server.swap_total * 1024 * 1024))
+                ]),
+                
+                // 硬盘信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '硬盘:'),
                     React.createElement('span', null, formatBytes(server.disks_total_kb * 1024))
                 ]),
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '进程: '),
+                
+                // 上传流量
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '上传:'),
+                    React.createElement('span', null, formatBitRate(server.net_tx))
+                ]),
+                
+                // 下载流量
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '下载:'),
+                    React.createElement('span', null, formatBitRate(server.net_rx))
+                ]),
+                
+                // 进程信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '进程:'),
                     React.createElement('span', null, server.process_count)
                 ]),
-                React.createElement('div', null, [
-                    React.createElement('span', { className: 'text-gray-500' }, '连接: '),
+                
+                // 连接信息
+                React.createElement('div', {
+                    className: 'flex items-center'
+                }, [
+                    React.createElement('span', { 
+                        className: 'text-gray-500 w-20' 
+                    }, '连接:'),
                     React.createElement('span', null, server.connection_count)
                 ])
             ]);
