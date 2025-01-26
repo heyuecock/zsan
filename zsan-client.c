@@ -12,6 +12,9 @@
 #include <sys/statvfs.h>
 #include <mntent.h>
 #include <stdarg.h>
+#include <errno.h>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
 
 // 首先定义所有结构体
 typedef struct {
@@ -33,6 +36,7 @@ typedef struct {
     int process_count;             // 进程数
     int connection_count;          // 连接数
     char machine_id[33];           // 机器ID
+    char ip_address[INET6_ADDRSTRLEN]; // 本机IP地址
 } SystemInfo;
 
 // 全局变量声明
@@ -415,6 +419,54 @@ int get_connection_count() {
     return count;
 }
 
+// 获取本机IP地址
+char* get_local_ip() {
+    struct ifaddrs *ifaddr, *ifa;
+    static char ip[INET6_ADDRSTRLEN];
+    int family, s;
+
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return NULL;
+    }
+
+    // 遍历所有网络接口
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        family = ifa->ifa_addr->sa_family;
+
+        // 只处理IPv4地址
+        if (family == AF_INET) {
+            // 跳过 lo 和 docker 等接口
+            if (strncmp(ifa->ifa_name, "lo", 2) == 0 ||
+                strncmp(ifa->ifa_name, "docker", 6) == 0 ||
+                strncmp(ifa->ifa_name, "br-", 3) == 0 ||
+                strncmp(ifa->ifa_name, "veth", 4) == 0)
+                continue;
+
+            s = getnameinfo(ifa->ifa_addr,
+                          sizeof(struct sockaddr_in),
+                          ip, NI_MAXHOST,
+                          NULL, 0, NI_NUMERICHOST);
+            if (s != 0) {
+                printf("getnameinfo() failed: %s\n", gai_strerror(s));
+                continue;
+            }
+            
+            // 找到第一个有效的非本地IP地址
+            if (strcmp(ip, "127.0.0.1") != 0) {
+                freeifaddrs(ifaddr);
+                return ip;
+            }
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return NULL;
+}
+
 // 获取所有监控数据
 void collect_metrics(SystemInfo *info) {
     struct sysinfo si;
@@ -482,6 +534,15 @@ void collect_metrics(SystemInfo *info) {
     if (machine_id_status != 0) {
         fprintf(stderr, "Warning: Using randomly generated machine-id\n");
     }
+    
+    // 获取本机IP地址
+    char *local_ip = get_local_ip();
+    if (local_ip) {
+        strncpy(info->ip_address, local_ip, sizeof(info->ip_address) - 1);
+        info->ip_address[sizeof(info->ip_address) - 1] = '\0';
+    } else {
+        strncpy(info->ip_address, "unknown", sizeof(info->ip_address) - 1);
+    }
 }
 
 // 将 metrics_to_post_data 函数移到 main 函数之前
@@ -497,6 +558,7 @@ char *metrics_to_post_data(const SystemInfo *info) {
         "name=%s&"
         "system=%s&"
         "location=%s&"
+        "ip_address=%s&"
         "uptime=%ld&"
         "cpu_percent=%.2f&"
         "net_tx=%lu&"
@@ -515,6 +577,7 @@ char *metrics_to_post_data(const SystemInfo *info) {
         g_server_name,
         info->system,
         g_server_location,
+        info->ip_address,
         info->uptime,
         info->cpu_percent,
         info->net_tx,
@@ -534,34 +597,82 @@ char *metrics_to_post_data(const SystemInfo *info) {
     return data;
 }
 
-// 添加重试机制的 send_post_request 函数
+// 修改 send_post_request 函数，添加响应解析
 int send_post_request(const char *url, const char *data) {
     const int max_retries = 3;
     const int retry_delay = 5; // seconds
     
     for (int retry = 0; retry < max_retries; retry++) {
         char command[4096];
+        char response[4096];
+        
+        // 使用临时文件存储响应
+        char temp_file[] = "/tmp/zsan_response_XXXXXX";
+        int temp_fd = mkstemp(temp_file);
+        if (temp_fd == -1) {
+            log_message("ERROR", "Failed to create temporary file: %s", strerror(errno));
+            return -1;
+        }
+        close(temp_fd);
+        
+        // 修改 curl 命令以保存响应并格式化 JSON
         snprintf(command, sizeof(command), 
-                "curl -X POST -d '%s' '%s' --connect-timeout 10 --max-time 30 -s",
-                data, url);
+                "curl -X POST -d '%s' '%s' --connect-timeout 10 --max-time 30 -s | python3 -m json.tool > %s",
+                data, url, temp_file);
                 
         int result = system(command);
-        if (result == 0) {
-            return 0; // 成功
-        }
         
-        fprintf(stderr, "Failed to send data (attempt %d/%d)\n", 
-                retry + 1, max_retries);
-                
+        // 读取响应
+        FILE *fp = fopen(temp_file, "r");
+        if (fp) {
+            size_t bytes_read = fread(response, 1, sizeof(response) - 1, fp);
+            response[bytes_read] = '\0';
+            fclose(fp);
+            
+            // 解析响应中的关键信息
+            char *success_str = strstr(response, "\"success\":");
+            char *error_str = strstr(response, "\"error\":");
+            char *data_str = strstr(response, "\"data\":");
+            
+            if (success_str && strstr(success_str, "true")) {
+                if (data_str) {
+                    char *client_id_str = strstr(data_str, "\"client_id\":");
+                    char *name_str = strstr(data_str, "\"name\":");
+                    if (client_id_str && name_str) {
+                        int client_id;
+                        char name[64];
+                        sscanf(client_id_str, "\"client_id\": %d", &client_id);
+                        sscanf(name_str, "\"name\": \"%63[^\"]\"", name);
+                        log_message("INFO", "Data sent successfully - Client ID: %d, Name: %s", 
+                                  client_id, name);
+                    } else {
+                        log_message("INFO", "Data sent successfully");
+                    }
+                }
+                unlink(temp_file);
+                return 0;
+            } else if (error_str) {
+                char error_msg[256] = {0};
+                if (sscanf(error_str, "\"error\": \"%255[^\"]\"", error_msg) == 1) {
+                    log_message("ERROR", "Server error: %s", error_msg);
+                } else {
+                    log_message("ERROR", "Unknown server error");
+                }
+            }
+        }
+        unlink(temp_file);
+        
         if (retry < max_retries - 1) {
+            log_message("INFO", "Retrying in %d seconds (attempt %d/%d)...", 
+                       retry_delay, retry + 1, max_retries);
             sleep(retry_delay);
         }
     }
     
-    return -1; // 所有重试都失败
+    return -1;
 }
 
-// 添加日志记录函数
+// 修改 log_message 函数，改进格式化
 void log_message(const char *level, const char *format, ...) {
     time_t now;
     time(&now);
@@ -571,9 +682,44 @@ void log_message(const char *level, const char *format, ...) {
     va_list args;
     va_start(args, format);
     
-    fprintf(stderr, "[%s] [%s] ", timestamp, level);
-    vfprintf(stderr, format, args);
-    fprintf(stderr, "\n");
+    // 准备完整的日志消息
+    char message[1024];
+    vsnprintf(message, sizeof(message), format, args);
+    
+    // 构建完整的日志行，添加更多上下文信息
+    char log_line[2048];
+    snprintf(log_line, sizeof(log_line), 
+             "[%s] [%s] [PID:%d] [Name:%s] [Location:%s] %s\n",
+             timestamp, level, getpid(), 
+             g_server_name[0] ? g_server_name : "未命名",
+             g_server_location[0] ? g_server_location : "未知",
+             message);
+    
+    // 写入到标准错误（带颜色）
+    const char *color = "";
+    const char *reset = "\033[0m";
+    if (strcmp(level, "ERROR") == 0) {
+        color = "\033[31m"; // 红色
+    } else if (strcmp(level, "INFO") == 0) {
+        color = "\033[32m"; // 绿色
+    } else if (strcmp(level, "WARN") == 0) {
+        color = "\033[33m"; // 黄色
+    }
+    fprintf(stderr, "%s%s%s", color, log_line, reset);
+    
+    // 写入到日志文件（不带颜色）
+    const char *log_path = (strcmp(level, "ERROR") == 0) ? 
+        "/var/log/zsan/zsan.error.log" : "/var/log/zsan/zsan.log";
+    
+    FILE *log_file = fopen(log_path, "a");
+    if (log_file) {
+        fputs(log_line, log_file);
+        fflush(log_file);  // 确保立即写入
+        fclose(log_file);
+    } else {
+        fprintf(stderr, "%s无法写入日志文件 %s: %s%s\n", 
+                "\033[31m", log_path, strerror(errno), reset);
+    }
     
     va_end(args);
 }
@@ -591,6 +737,20 @@ static void safe_strncpy(char *dest, const char *src, size_t size) {
 
 // main 函数和其他代码保持不变
 int main(int argc, char *argv[]) {
+    // 检查日志文件权限
+    FILE *test_log = fopen("/var/log/zsan/zsan.log", "a");
+    FILE *test_error = fopen("/var/log/zsan/zsan.error.log", "a");
+    
+    if (!test_log || !test_error) {
+        fprintf(stderr, "无法访问日志文件，请检查权限\n");
+        if (test_log) fclose(test_log);
+        if (test_error) fclose(test_error);
+        return 1;
+    }
+    
+    fclose(test_log);
+    fclose(test_error);
+    
     int interval = 10;
     char url[256] = "";
     int opt;
@@ -674,7 +834,8 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    log_message("INFO", "Starting zsan client with interval %d seconds", interval);
+    log_message("INFO", "zsan client starting up...");
+    log_message("INFO", "Version: 0.0.1");
     
     while (1) {
         SystemInfo info = {0};
@@ -686,10 +847,9 @@ int main(int argc, char *argv[]) {
             continue;
         }
         
+        log_message("INFO", "Sending metrics to %s", url);
         if (send_post_request(url, post_data) != 0) {
             log_message("ERROR", "Failed to send data to %s", url);
-        } else {
-            log_message("INFO", "Successfully sent metrics to server");
         }
         
         free(post_data);
