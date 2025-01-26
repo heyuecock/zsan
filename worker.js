@@ -423,8 +423,8 @@ const routeHandlers = {
         }
     },
 
-    async handleGetStatus(request, env) {
-        return new Response('kunlun', {
+    async handleGetStatus(request) {
+        return new Response('zsan', {  // 修改返回值为 'zsan'
             headers: { 
                 'Content-Type': 'text/plain',
                 'Cache-Control': 'no-cache'
