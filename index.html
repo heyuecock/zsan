@@ -214,110 +214,58 @@
 
         // 修改 StatusBar 组件
         const StatusBar = React.memo(({ server }) => {
+            // 计算使用率百分比
+            const memoryUsage = (server.mem_used / server.mem_total * 100).toFixed(2);
+            const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb * 100).toFixed(2);
+            const swapUsage = ((server.swap_total - server.swap_free) / server.swap_total * 100).toFixed(2);
+            
+            // 格式化内存和硬盘大小
+            const memUsed = formatBytes(server.mem_used * 1024 * 1024);
+            const memTotal = formatBytes(server.mem_total * 1024 * 1024);
+            const diskUsed = formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024);
+            const diskTotal = formatBytes(server.disks_total_kb * 1024);
+            const swapUsed = formatBytes((server.swap_total - server.swap_free) * 1024 * 1024);
+            const swapTotal = formatBytes(server.swap_total * 1024 * 1024);
+            
+            // 获取当前时间和启动时间
+            const now = new Date();
+            const startTime = new Date(now - server.uptime * 1000);
+            const startTimeStr = startTime.toLocaleString('zh-CN', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            const nowStr = now.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
             return React.createElement('div', {
-                className: 'grid grid-cols-1 gap-2 p-4 text-sm border-b dark:border-gray-700'
+                className: 'p-4 text-sm border-b dark:border-gray-700'
             }, [
-                // 系统信息
                 React.createElement('div', {
-                    className: 'flex items-center'
+                    className: 'whitespace-pre-wrap font-mono'
                 }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '系统:'),
-                    React.createElement('span', null, server.system)
-                ]),
-                
-                // 负载信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '负载:'),
-                    React.createElement('span', null, 
-                        `${server.load_1min.toFixed(2)} / ${server.load_5min.toFixed(2)} / ${server.load_15min.toFixed(2)}`
-                    )
-                ]),
-                
-                // CPU信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, 'CPU:'),
-                    React.createElement('span', null, `${server.cpu_num_cores} 核`)
-                ]),
-                
-                // 内存信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '内存:'),
-                    React.createElement('span', null, formatBytes(server.mem_total * 1024 * 1024))
-                ]),
-                
-                // 交换分区信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, 'SWAP:'),
-                    React.createElement('span', null, formatBytes(server.swap_total * 1024 * 1024))
-                ]),
-                
-                // 硬盘信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '硬盘:'),
-                    React.createElement('span', null, formatBytes(server.disks_total_kb * 1024))
-                ]),
-                
-                // 上传流量
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '上传:'),
-                    React.createElement('span', null, formatBitRate(server.net_tx))
-                ]),
-                
-                // 下载流量
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '下载:'),
-                    React.createElement('span', null, formatBitRate(server.net_rx))
-                ]),
-                
-                // 进程信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '进程:'),
-                    React.createElement('span', null, server.process_count)
-                ]),
-                
-                // 连接信息
-                React.createElement('div', {
-                    className: 'flex items-center'
-                }, [
-                    React.createElement('span', { 
-                        className: 'text-gray-500 w-20' 
-                    }, '连接:'),
-                    React.createElement('span', null, server.connection_count)
-                ])
+                    `系统: ${server.system} `,
+                    `CPU: ${server.cpu_num_cores} 核 (${server.cpu_percent.toFixed(2)}%) `,
+                    `硬盘: ${diskUsed} / ${diskTotal} (${diskUsage}%) `,
+                    `内存: ${memUsed} / ${memTotal} (${memoryUsage}%) `,
+                    `交换: ${swapUsed} / ${swapTotal} (${swapUsage}%) `,
+                    `流量: ${formatBytes(server.net_tx)} ${formatBytes(server.net_rx)} `,
+                    `负载: ${server.load_1min.toFixed(2)} / ${server.load_5min.toFixed(2)} / ${server.load_15min.toFixed(2)} `,
+                    `进程数: ${server.process_count} `,
+                    `连接数: TCP ${server.connection_count} `,
+                    `启动: ${startTimeStr} `,
+                    `活动: ${nowStr} `,
+                    `在线: ${Math.floor(server.uptime / 86400)} 天`
+                ].join('\n'))
             ]);
         });
 
