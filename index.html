@@ -51,7 +51,7 @@
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
     
     <!-- 添加 flag-icons CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.11.0/css/flag-icons.min.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@6.6.6/css/flag-icons.min.css"/>
     
     <style>
         .server-row {
@@ -111,62 +111,8 @@
         }
         
         .flag-icon {
-            margin: 0 0.5rem;
+            margin-right: 0.5rem;
             border-radius: 2px;
-            width: 1.2em;
-            height: 0.9em;
-            display: inline-block;
-            vertical-align: middle;
-        }
-        
-        /* 添加移动端响应式样式 */
-        @media (max-width: 768px) {
-            .grid-cols-12 {
-                grid-template-columns: repeat(1, minmax(0, 1fr));
-            }
-            
-            .col-span-2,
-            .col-span-3 {
-                grid-column: span 1 / span 1;
-            }
-            
-            .server-row {
-                padding: 1rem;
-            }
-            
-            .network-stats {
-                font-size: 0.875rem;
-            }
-        }
-
-        /* 添加新的卡片样式 */
-        .status-card {
-            @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-4;
-        }
-
-        .stats-container {
-            @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6;
-        }
-
-        .stat-card {
-            @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-4;
-        }
-
-        .server-grid {
-            @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
-        }
-
-        /* 添加网络速度指示器样式 */
-        .network-indicator {
-            @apply inline-flex items-center text-sm;
-        }
-
-        .network-up {
-            @apply text-green-500;
-        }
-
-        .network-down {
-            @apply text-blue-500;
         }
     </style>
 </head>
@@ -262,161 +208,173 @@
             ]);
         });
 
-        // 修改 StatusBar 组件
+        // 添加新的状态栏组件
         const StatusBar = React.memo(({ server }) => {
-            // 计算使用率百分比
-            const memoryUsage = (server.mem_used / server.mem_total * 100).toFixed(2);
-            const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb * 100).toFixed(2);
-            const swapUsage = ((server.swap_total - server.swap_free) / server.swap_total * 100).toFixed(2);
-            
-            // 格式化内存和硬盘大小
-            const memUsed = formatBytes(server.mem_used * 1024 * 1024);
-            const memTotal = formatBytes(server.mem_total * 1024 * 1024);
-            const diskUsed = formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024);
-            const diskTotal = formatBytes(server.disks_total_kb * 1024);
-            const swapUsed = formatBytes((server.swap_total - server.swap_free) * 1024 * 1024);
-            const swapTotal = formatBytes(server.swap_total * 1024 * 1024);
-            
-            // 获取当前时间和启动时间
-            const now = new Date();
-            const startTime = new Date(now - server.uptime * 1000);
-            const startTimeStr = startTime.toLocaleString('zh-CN', { 
-                year: 'numeric', 
-                month: '2-digit', 
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-            const nowStr = now.toLocaleString('zh-CN', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-
             return React.createElement('div', {
-                className: 'p-4 text-sm border-b dark:border-gray-700'
+                className: 'grid grid-cols-7 gap-4 p-3 text-sm border-b dark:border-gray-700'
             }, [
-                React.createElement('div', {
-                    className: 'whitespace-pre-wrap font-mono'
-                }, [
-                    `系统: ${server.system} `,
-                    `CPU: ${server.cpu_model} ${server.cpu_num_cores} 核 (${server.cpu_percent.toFixed(2)}%) `,
-                    `硬盘: ${diskUsed} / ${diskTotal} (${diskUsage}%) `,
-                    `内存: ${memUsed} / ${memTotal} (${memoryUsage}%) `,
-                    `交换: ${swapUsed} / ${swapTotal} (${swapUsage}%) `,
-                    `网络: ↑${formatBitRate(server.net_tx)} ↓${formatBitRate(server.net_rx)} `,
-                    `流量: ↑${formatBytes(server.total_tx)} ↓${formatBytes(server.total_rx)} `,
-                    `进程数: ${server.process_count} `,
-                    `连接数: TCP ${server.connection_count} `,
-                    `启动: ${startTimeStr} `,
-                    `活动: ${nowStr} `,
-                    `在线: ${Math.floor(server.uptime / 86400)} 天`
-                ].join('\n'))
-            ]);
-        });
-
-        // 添加顶部统计信息组件
-        const StatsOverview = React.memo(({ servers }) => {
-            const totalNodes = servers.length;
-            const onlineNodes = servers.filter(s => Math.floor(Date.now() / 1000) - s.insert_utc_ts <= 60).length;
-            
-            // 计算总上传下载速度
-            const totalUpload = servers.reduce((sum, server) => sum + server.net_tx, 0);
-            const totalDownload = servers.reduce((sum, server) => sum + server.net_rx, 0);
-            
-            return React.createElement('div', { className: 'stats-container' }, [
-                React.createElement('div', { className: 'stat-card' }, [
-                    React.createElement('div', { className: 'text-gray-500 dark:text-gray-400' }, '节点情况'),
-                    React.createElement('div', { className: 'text-2xl font-bold mt-2' }, 
-                        `${onlineNodes} / ${totalNodes}`
-                    )
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '系统: '),
+                    React.createElement('span', null, server.system)
                 ]),
-                React.createElement('div', { className: 'stat-card' }, [
-                    React.createElement('div', { className: 'text-gray-500 dark:text-gray-400' }, '总流量'),
-                    React.createElement('div', { className: 'text-2xl font-bold mt-2' }, [
-                        React.createElement('span', { className: 'network-up mr-4' },
-                            `↑ ${formatBitRate(totalUpload)}`
-                        ),
-                        React.createElement('span', { className: 'network-down' },
-                            `↓ ${formatBitRate(totalDownload)}`
-                        )
-                    ])
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '在线: '),
+                    React.createElement('span', null, formatUptime(server.uptime))
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, 'CPU: '),
+                    React.createElement('span', null, `${server.cpu_num_cores} 核`)
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '内存: '),
+                    React.createElement('span', null, formatBytes(server.mem_total * 1024 * 1024))
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '硬盘: '),
+                    React.createElement('span', null, formatBytes(server.disks_total_kb * 1024))
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '进程: '),
+                    React.createElement('span', null, server.process_count)
+                ]),
+                React.createElement('div', null, [
+                    React.createElement('span', { className: 'text-gray-500' }, '连接: '),
+                    React.createElement('span', null, server.connection_count)
                 ])
             ]);
         });
 
-        // 修改服务器卡片组件
-        const ServerCard = React.memo(({ server, isExpanded, onToggle }) => {
+        // 修改服务器行组件，添加更多信息
+        const ServerRow = React.memo(({ server, isExpanded, onToggle }) => {
             const isOffline = Math.floor(Date.now() / 1000) - server.insert_utc_ts > 60;
-            const memoryUsage = (server.mem_used / server.mem_total * 100).toFixed(1);
-            const cpuUsage = server.cpu_percent.toFixed(1);
+            const memoryUsage = (server.mem_used / server.mem_total) * 100;
+            const diskUsage = ((server.disks_total_kb - server.disks_avail_kb) / server.disks_total_kb) * 100;
+            const cpuUsage = server.load_1min * 100 / server.cpu_num_cores;
 
             return React.createElement('div', {
-                className: 'status-card'
+                className: 'server-row border-b dark:border-gray-700'
             }, [
-                // 服务器基本信息
-                React.createElement('div', { className: 'flex justify-between items-center mb-4' }, [
-                    React.createElement('div', { className: 'flex items-center gap-2' }, [
+                // 主要信息行
+                React.createElement('div', {
+                    className: 'grid grid-cols-12 gap-4 p-4 cursor-pointer',
+                    onClick: () => onToggle()
+                }, [
+                    // 状态、国旗和名称
+                    React.createElement('div', {
+                        className: 'col-span-2 flex items-center gap-2'
+                    }, [
                         React.createElement('span', {
                             className: `w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'}`
                         }),
-                        React.createElement('span', { className: 'font-medium' }, server.name || '未命名'),
+                        // 添加国旗图标
                         React.createElement('span', {
-                            className: `fi fi-${(server.country_code || 'xx').toLowerCase()} flag-icon`
-                        })
+                            className: `fi fi-${server.country_code?.toLowerCase() || 'xx'} flag-icon`
+                        }),
+                        React.createElement('span', {
+                            className: 'font-medium'
+                        }, server.name || '未命名'),
+                        React.createElement('span', {
+                            className: 'text-xs text-gray-500'
+                        }, `${server.location || '未知'} (${server.ip_address || 'unknown'})`)
                     ]),
-                    React.createElement('button', {
-                        className: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
-                        onClick: () => onToggle()
-                    }, React.createElement('i', { 
-                        className: `fas fa-${isExpanded ? 'chevron-up' : 'chevron-down'}`
-                    }))
-                ]),
 
-                // 使用率指标
-                React.createElement('div', { className: 'grid grid-cols-2 gap-4 mb-4' }, [
-                    React.createElement('div', null, [
-                        React.createElement('div', { className: 'flex justify-between text-sm mb-1' }, [
-                            React.createElement('span', null, 'CPU'),
-                            React.createElement('span', null, `${cpuUsage}%`)
-                        ]),
+                    // 系统负载
+                    React.createElement('div', {
+                        className: 'col-span-3'
+                    }, [
+                        React.createElement('div', {
+                            className: 'text-sm mb-1'
+                        }, `负载: ${server.load_1min.toFixed(2)} | ${server.load_5min.toFixed(2)} | ${server.load_15min.toFixed(2)}`),
                         React.createElement(ProgressBar, {
                             value: cpuUsage,
                             warningThreshold: 60,
                             dangerThreshold: 80
                         })
                     ]),
-                    React.createElement('div', null, [
-                        React.createElement('div', { className: 'flex justify-between text-sm mb-1' }, [
-                            React.createElement('span', null, '内存'),
-                            React.createElement('span', null, `${memoryUsage}%`)
-                        ]),
-                        React.createElement(ProgressBar, {
-                            value: memoryUsage,
-                            warningThreshold: 70,
-                            dangerThreshold: 90
-                        })
-                    ])
-                ]),
 
-                // 网络速度
-                React.createElement('div', { className: 'flex justify-between text-sm' }, [
-                    React.createElement('div', { className: 'network-indicator' }, [
-                        React.createElement('i', { className: 'fas fa-arrow-up text-green-500 mr-1' }),
-                        formatBitRate(server.net_tx)
+                    // 内存使用
+                    React.createElement('div', {
+                        className: 'col-span-3'
+                    }, [
+                        React.createElement('div', {
+                            className: 'text-sm mb-1'
+                        }, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
+                        React.createElement(ProgressBar, {
+                            value: memoryUsage
+                        })
                     ]),
-                    React.createElement('div', { className: 'network-indicator' }, [
-                        React.createElement('i', { className: 'fas fa-arrow-down text-blue-500 mr-1' }),
-                        formatBitRate(server.net_rx)
-                    ])
+
+                    // 网络速率
+                    React.createElement('div', {
+                        className: 'col-span-2 network-stats'
+                    }, [
+                        React.createElement('div', {
+                            className: 'text-sm'
+                        }, `↑ ${formatBytes(server.net_tx)}/s`),
+                        React.createElement('div', {
+                            className: 'text-sm'
+                        }, `↓ ${formatBytes(server.net_rx)}/s`)
+                    ]),
+
+                    // 在线时间
+                    React.createElement('div', {
+                        className: 'col-span-2 text-sm text-right'
+                    }, formatUptime(server.uptime))
                 ]),
 
                 // 展开的详细信息
-                isExpanded && React.createElement(StatusBar, { server })
+                isExpanded && React.createElement('div', {
+                    className: 'p-4 bg-gray-50 dark:bg-gray-800'
+                }, [
+                    React.createElement(StatusBar, { server }),
+                    React.createElement('div', {
+                        className: 'grid grid-cols-2 gap-4 mt-4'
+                    }, [
+                        // 系统详情
+                        React.createElement('div', {
+                            className: 'space-y-4'
+                        }, [
+                            React.createElement('div', {
+                                className: 'bg-white dark:bg-gray-700 p-4 rounded-lg'
+                            }, [
+                                React.createElement('h4', {
+                                    className: 'font-medium mb-3'
+                                }, '系统详情'),
+                                React.createElement('div', {
+                                    className: 'space-y-2 text-sm'
+                                }, [
+                                    React.createElement('p', null, `系统: ${server.system}`),
+                                    React.createElement('p', null, `位置: ${server.location || '未知'}`),
+                                    React.createElement('p', null, `CPU: ${server.cpu_num_cores} 核`),
+                                    React.createElement('p', null, `进程: ${server.process_count}`),
+                                    React.createElement('p', null, `连接: ${server.connection_count}`)
+                                ])
+                            ])
+                        ]),
+
+                        // 资源使用
+                        React.createElement('div', {
+                            className: 'space-y-4'
+                        }, [
+                            React.createElement('div', {
+                                className: 'bg-white dark:bg-gray-700 p-4 rounded-lg'
+                            }, [
+                                React.createElement('h4', {
+                                    className: 'font-medium mb-3'
+                                }, '资源使用'),
+                                React.createElement('div', {
+                                    className: 'space-y-2 text-sm'
+                                }, [
+                                    React.createElement('p', null, `内存: ${formatBytes(server.mem_used * 1024 * 1024)} / ${formatBytes(server.mem_total * 1024 * 1024)}`),
+                                    React.createElement('p', null, `交换: ${formatBytes((server.swap_total - server.swap_free) * 1024 * 1024)} / ${formatBytes(server.swap_total * 1024 * 1024)}`),
+                                    React.createElement('p', null, `硬盘: ${formatBytes((server.disks_total_kb - server.disks_avail_kb) * 1024)} / ${formatBytes(server.disks_total_kb * 1024)}`),
+                                    React.createElement('p', null, `上传: ${formatBitRate(server.net_tx)}`),
+                                    React.createElement('p', null, `下载: ${formatBitRate(server.net_rx)}`)
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
             ]);
         });
 
@@ -435,14 +393,12 @@
                             throw new Error('服务器响应错误');
                         }
                         const data = await response.json();
-                        console.log('API Response:', data);
+                        console.log('Fetched data:', data); // 添加调试日志
                         
                         if (data.success && Array.isArray(data.data)) {
-                            const processedData = data.data.map(server => {
-                                console.log('Server country_code:', server.country_code);
-                                return server;
+                            setServers(prev => {
+                                return data.data;
                             });
-                            setServers(processedData);
                             setError(null);
                         } else {
                             throw new Error(data.error || '获取数据失败');
@@ -477,23 +433,19 @@
                 [servers]
             );
 
-            // 添加移动端检测
-            const isMobile = window.innerWidth <= 768;
-            
-            // 根据设备类型调整刷新间隔
-            const refreshInterval = isMobile ? 30000 : 10000;
-
             return React.createElement(ErrorBoundary, null, [
                 React.createElement('div', { className: 'container mx-auto px-4 py-8' }, [
-                    // 头部标题
-                    React.createElement('div', { className: 'mb-8' }, [
-                        React.createElement('h1', { 
-                            className: 'text-2xl font-bold dark:text-white' 
-                        }, 'Zsan 服务器监控')
+                    // 头部
+                    React.createElement('div', { className: 'flex justify-between items-center mb-8' }, [
+                        React.createElement('div', null, [
+                            React.createElement('h1', { 
+                                className: 'text-2xl font-bold dark:text-white' 
+                            }, 'Zsan 服务器监控'),
+                            React.createElement('p', { 
+                                className: 'text-gray-600 dark:text-gray-400 mt-1' 
+                            }, `在线: ${onlineCount}/${servers.length}`)
+                        ])
                     ]),
-
-                    // 统计概览
-                    !loading && !error && React.createElement(StatsOverview, { servers }),
 
                     // 加载状态
                     loading && React.createElement('div', { 
@@ -505,12 +457,12 @@
                         className: 'error-message' 
                     }, error),
 
-                    // 服务器卡片网格
+                    // 服务器列表
                     !loading && !error && React.createElement('div', { 
-                        className: 'server-grid' 
+                        className: 'bg-white dark:bg-[#1e293b] rounded-lg shadow overflow-hidden' 
                     },
                         servers.map(server =>
-                            React.createElement(ServerCard, { 
+                            React.createElement(ServerRow, { 
                                 key: server.machine_id,
                                 server: server,
                                 isExpanded: expandedServers.has(server.machine_id),
