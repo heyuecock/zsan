@@ -17,7 +17,7 @@ Zsan 是一个轻量级（客户端内存占用 < 1MB）、高效（仅一个 .c
 
 ## 快速开始
 
-[演示地址](https://tz.yuehe.workers.dev/)
+[演示地址](https://tz.heyue.workers.dev/)
 
 ### 1. 部署 Worker 版 Zsan Server
 
